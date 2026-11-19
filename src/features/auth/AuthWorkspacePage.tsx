@@ -70,7 +70,7 @@ export const AuthWorkspacePage: React.FC<{ manageMode?: boolean }> = ({ manageMo
       if (!workspaceName.trim()) throw new Error('Workspace name is required');
       await createCoupleWorkspace(workspaceName, defaultCurrency);
       notify(
-        lang === 'he' ? 'הסביבה הזוגית הוקמה בהצלחה!' : 'Couple workspace created!',
+        lang === 'he' ? 'סביבת העבודה הוקמה בהצלחה!' : 'Workspace created!',
         'success'
       );
     } catch (err) {
@@ -84,7 +84,7 @@ export const AuthWorkspacePage: React.FC<{ manageMode?: boolean }> = ({ manageMo
       if (!inviteCodeInput.trim()) throw new Error('Invite code is required');
       await joinCoupleWorkspace(inviteCodeInput);
       notify(
-        lang === 'he' ? 'הצטרפת לסביבה הזוגית!' : 'Joined couple workspace!',
+        lang === 'he' ? 'הצטרפת לסביבת העבודה!' : 'Joined workspace!',
         'success'
       );
     } catch (err) {
