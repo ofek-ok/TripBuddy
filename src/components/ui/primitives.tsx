@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import { cn } from '@/lib/utils/cn';
 import { X } from 'lucide-react';
+import { EmojiPickerButton } from '@/components/ui/EmojiPickerButton';
 
 export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: 'primary' | 'secondary' | 'sand' | 'outline' | 'ghost' | 'danger';
@@ -51,24 +52,110 @@ export const Card: React.FC<React.HTMLAttributes<HTMLDivElement>> = ({ className
   />
 );
 
+const NON_EMOJI_INPUT_TYPES = new Set([
+  'password',
+  'email',
+  'number',
+  'date',
+  'time',
+  'datetime-local',
+  'month',
+  'week',
+  'url',
+  'tel',
+  'file',
+  'color',
+  'range',
+  'hidden',
+]);
+
+function insertEmojiIntoElement<T extends HTMLInputElement | HTMLTextAreaElement>(
+  el: T | null,
+  emoji: string,
+  currentValue: string,
+  onChange?: React.ChangeEventHandler<T>
+) {
+  const start = el?.selectionStart ?? currentValue.length;
+  const end = el?.selectionEnd ?? currentValue.length;
+  const nextValue = currentValue.slice(0, start) + emoji + currentValue.slice(end);
+
+  if (onChange) {
+    const syntheticEvent = {
+      target: { value: nextValue },
+      currentTarget: { value: nextValue },
+    } as React.ChangeEvent<T>;
+    onChange(syntheticEvent);
+  } else if (el) {
+    el.value = nextValue;
+  }
+
+  requestAnimationFrame(() => {
+    if (!el) return;
+    el.focus();
+    const pos = start + emoji.length;
+    try {
+      el.setSelectionRange(pos, pos);
+    } catch {
+      // ignore if input type doesn't support selectionRange
+    }
+  });
+}
+
 export const Input = React.forwardRef<
   HTMLInputElement,
-  React.InputHTMLAttributes<HTMLInputElement> & { label?: string; error?: string }
->(({ className, label, error, ...props }, ref) => (
-  <div className="w-full space-y-1.5">
-    {label && <label className="block text-xs font-semibold text-navy/80">{label}</label>}
-    <input
-      ref={ref}
-      className={cn(
-        'w-full h-11 px-3.5 rounded-xl bg-ivory/60 border border-navy/15 text-navy text-sm placeholder:text-navy/40 focus:outline-none focus:ring-2 focus:ring-navy/20 focus:border-navy focus:bg-surface transition-all',
-        error && 'border-red-500 focus:ring-red-200',
-        className
-      )}
-      {...props}
-    />
-    {error && <p className="text-xs text-red-600">{error}</p>}
-  </div>
-));
+  React.InputHTMLAttributes<HTMLInputElement> & {
+    label?: string;
+    error?: string;
+    disableEmoji?: boolean;
+  }
+>(({ className, label, error, disableEmoji, type = 'text', value, onChange, disabled, readOnly, ...props }, ref) => {
+  const innerRef = useRef<HTMLInputElement | null>(null);
+  const showEmoji = !disableEmoji && !disabled && !readOnly && !NON_EMOJI_INPUT_TYPES.has(type);
+
+  const setRefs = (node: HTMLInputElement | null) => {
+    innerRef.current = node;
+    if (typeof ref === 'function') ref(node);
+    else if (ref) ref.current = node;
+  };
+
+  return (
+    <div className="w-full space-y-1.5">
+      {label && <label className="block text-xs font-semibold text-navy/80">{label}</label>}
+      <div className="relative">
+        <input
+          ref={setRefs}
+          type={type}
+          value={value}
+          onChange={onChange}
+          disabled={disabled}
+          readOnly={readOnly}
+          className={cn(
+            'w-full h-11 px-3.5 rounded-xl bg-ivory/60 border border-navy/15 text-navy text-sm placeholder:text-navy/40 focus:outline-none focus:ring-2 focus:ring-navy/20 focus:border-navy focus:bg-surface transition-all',
+            showEmoji && 'pe-10',
+            error && 'border-red-500 focus:ring-red-200',
+            className
+          )}
+          {...props}
+        />
+        {showEmoji && (
+          <div className="absolute inset-y-0 end-1.5 flex items-center">
+            <EmojiPickerButton
+              onSelect={(emoji) =>
+                insertEmojiIntoElement(
+                  innerRef.current,
+                  emoji,
+                  String(value ?? innerRef.current?.value ?? ''),
+                  onChange
+                )
+              }
+            />
+          </div>
+        )}
+      </div>
+      {error && <p className="text-xs text-red-600">{error}</p>}
+    </div>
+  );
+});
 Input.displayName = 'Input';
 
 export const Select = React.forwardRef<
@@ -95,21 +182,53 @@ Select.displayName = 'Select';
 
 export const Textarea = React.forwardRef<
   HTMLTextAreaElement,
-  React.TextareaHTMLAttributes<HTMLTextAreaElement> & { label?: string }
->(({ className, label, ...props }, ref) => (
-  <div className="w-full space-y-1.5">
-    {label && <label className="block text-xs font-semibold text-navy/80">{label}</label>}
-    <textarea
-      ref={ref}
-      rows={3}
-      className={cn(
-        'w-full p-3.5 rounded-xl bg-ivory/60 border border-navy/15 text-navy text-sm placeholder:text-navy/40 focus:outline-none focus:ring-2 focus:ring-navy/20 focus:border-navy focus:bg-surface transition-all resize-none',
-        className
-      )}
-      {...props}
-    />
-  </div>
-));
+  React.TextareaHTMLAttributes<HTMLTextAreaElement> & { label?: string; disableEmoji?: boolean }
+>(({ className, label, disableEmoji, value, onChange, disabled, readOnly, ...props }, ref) => {
+  const innerRef = useRef<HTMLTextAreaElement | null>(null);
+  const showEmoji = !disableEmoji && !disabled && !readOnly;
+
+  const setRefs = (node: HTMLTextAreaElement | null) => {
+    innerRef.current = node;
+    if (typeof ref === 'function') ref(node);
+    else if (ref) ref.current = node;
+  };
+
+  return (
+    <div className="w-full space-y-1.5">
+      {label && <label className="block text-xs font-semibold text-navy/80">{label}</label>}
+      <div className="relative">
+        <textarea
+          ref={setRefs}
+          rows={3}
+          value={value}
+          onChange={onChange}
+          disabled={disabled}
+          readOnly={readOnly}
+          className={cn(
+            'w-full p-3.5 rounded-xl bg-ivory/60 border border-navy/15 text-navy text-sm placeholder:text-navy/40 focus:outline-none focus:ring-2 focus:ring-navy/20 focus:border-navy focus:bg-surface transition-all resize-none',
+            showEmoji && 'pe-10',
+            className
+          )}
+          {...props}
+        />
+        {showEmoji && (
+          <div className="absolute top-2 end-2">
+            <EmojiPickerButton
+              onSelect={(emoji) =>
+                insertEmojiIntoElement(
+                  innerRef.current,
+                  emoji,
+                  String(value ?? innerRef.current?.value ?? ''),
+                  onChange
+                )
+              }
+            />
+          </div>
+        )}
+      </div>
+    </div>
+  );
+});
 Textarea.displayName = 'Textarea';
 
 export const Badge: React.FC<{
