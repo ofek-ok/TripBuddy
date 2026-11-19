@@ -45,7 +45,7 @@ Button.displayName = 'Button';
 export const Card: React.FC<React.HTMLAttributes<HTMLDivElement>> = ({ className, ...props }) => (
   <div
     className={cn(
-      'bg-surface rounded-2xl border border-navy/[0.07] shadow-card p-4 sm:p-5',
+      'bg-surface/88 backdrop-blur-md rounded-2xl border border-white/60 shadow-card p-4 sm:p-5',
       className
     )}
     {...props}

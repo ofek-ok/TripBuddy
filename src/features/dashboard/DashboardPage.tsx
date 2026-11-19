@@ -102,7 +102,7 @@ export const DashboardPage: React.FC = () => {
 
   return (
     <div className="relative space-y-5">
-      {/* Immersive Ambient Trip Cover Backdrop */}
+      {/* Full-Screen Fixed Trip Cover Background (Crisp & Luminous behind Frosted Glass Cards) */}
       {activeTrip.cover_image && (
         <div
           aria-hidden="true"
@@ -111,18 +111,18 @@ export const DashboardPage: React.FC = () => {
           <img
             src={activeTrip.cover_image}
             alt=""
-            className="w-full h-[65vh] object-cover opacity-25 blur-2xl scale-110"
+            className="w-full h-full object-cover object-center opacity-55 scale-[1.02]"
             onError={(e) => {
               (e.currentTarget as HTMLImageElement).style.display = 'none';
             }}
           />
-          <div className="absolute inset-0 bg-gradient-to-b from-ivory/35 via-ivory/80 to-ivory" />
+          <div className="absolute inset-0 bg-gradient-to-b from-ivory/25 via-ivory/50 to-ivory/80" />
         </div>
       )}
 
       {/* Editorial Magazine Hero Card — Showcases Vivid Trip Cover Photo */}
       <div className="relative z-10 space-y-5">
-      <div className="relative rounded-3xl text-white shadow-soft overflow-hidden bg-gradient-to-br from-navy via-navy-light to-sand-dark min-h-[340px] sm:min-h-[380px] flex flex-col justify-between p-5 sm:p-7">
+      <div className="relative rounded-3xl text-white shadow-xl overflow-hidden bg-gradient-to-br from-navy via-navy-light to-sand-dark min-h-[400px] sm:min-h-[450px] flex flex-col justify-between p-5 sm:p-7 border border-white/25">
         {activeTrip.cover_image && (
           <>
             <img
@@ -133,8 +133,8 @@ export const DashboardPage: React.FC = () => {
                 (e.currentTarget as HTMLImageElement).style.display = 'none';
               }}
             />
-            {/* Clean cinematic scrim: keeps upper photography crisp & unobstructed while ensuring AA+ contrast at bottom */}
-            <div className="absolute inset-0 bg-gradient-to-t from-navy/92 via-navy/35 to-navy/15" />
+            {/* Light top, rich bottom scrim so the upper 60% of the photo stays vivid & unobstructed */}
+            <div className="absolute inset-0 bg-gradient-to-t from-navy/90 via-navy/25 to-transparent" />
           </>
         )}
 
@@ -150,7 +150,7 @@ export const DashboardPage: React.FC = () => {
         </div>
 
         {/* Bottom Editorial Overlay: Title + Multi-Destination + Countdown + Progress */}
-        <div className="relative z-10 space-y-4 pt-16 sm:pt-20">
+        <div className="relative z-10 space-y-4 pt-24 sm:pt-32">
           <div className="flex flex-col md:flex-row md:items-end justify-between gap-5">
             <div className="space-y-2">
               <h1 className="text-2xl sm:text-4xl font-extrabold tracking-tight leading-tight drop-shadow-sm">
@@ -253,7 +253,7 @@ export const DashboardPage: React.FC = () => {
         <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
           <button
             onClick={() => navigate('/trips?action=new')}
-            className="flex items-center gap-2.5 p-3 rounded-2xl bg-surface border border-navy/10 hover:border-sand transition-all text-start shadow-card"
+            className="flex items-center gap-2.5 p-3 rounded-2xl bg-surface/88 backdrop-blur-md border border-white/60 hover:border-sand transition-all text-start shadow-card"
           >
             <div className="w-9 h-9 rounded-xl bg-navy/10 text-navy flex items-center justify-center shrink-0">
               <Compass className="w-4 h-4" />
@@ -263,7 +263,7 @@ export const DashboardPage: React.FC = () => {
 
           <button
             onClick={() => navigate('/budget?action=new')}
-            className="flex items-center gap-2.5 p-3 rounded-2xl bg-surface border border-navy/10 hover:border-sand transition-all text-start shadow-card"
+            className="flex items-center gap-2.5 p-3 rounded-2xl bg-surface/88 backdrop-blur-md border border-white/60 hover:border-sand transition-all text-start shadow-card"
           >
             <div className="w-9 h-9 rounded-xl bg-sand/20 text-sand-dark flex items-center justify-center shrink-0">
               <Wallet className="w-4 h-4" />
@@ -273,7 +273,7 @@ export const DashboardPage: React.FC = () => {
 
           <button
             onClick={() => navigate('/tasks?action=new')}
-            className="flex items-center gap-2.5 p-3 rounded-2xl bg-surface border border-navy/10 hover:border-sand transition-all text-start shadow-card"
+            className="flex items-center gap-2.5 p-3 rounded-2xl bg-surface/88 backdrop-blur-md border border-white/60 hover:border-sand transition-all text-start shadow-card"
           >
             <div className="w-9 h-9 rounded-xl bg-sage/25 text-navy flex items-center justify-center shrink-0">
               <ListChecks className="w-4 h-4" />
@@ -283,7 +283,7 @@ export const DashboardPage: React.FC = () => {
 
           <button
             onClick={() => navigate('/itinerary?action=new')}
-            className="flex items-center gap-2.5 p-3 rounded-2xl bg-surface border border-navy/10 hover:border-sand transition-all text-start shadow-card"
+            className="flex items-center gap-2.5 p-3 rounded-2xl bg-surface/88 backdrop-blur-md border border-white/60 hover:border-sand transition-all text-start shadow-card"
           >
             <div className="w-9 h-9 rounded-xl bg-navy/10 text-navy flex items-center justify-center shrink-0">
               <CalendarRange className="w-4 h-4" />

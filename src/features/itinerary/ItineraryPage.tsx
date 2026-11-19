@@ -255,7 +255,7 @@ export const ItineraryPage: React.FC = () => {
 
   return (
     <div className="relative space-y-5">
-      {/* Subtle Ambient Trip Cover Backdrop */}
+      {/* Full-Screen Fixed Trip Cover Background (Crisp & Luminous behind Frosted Glass Cards) */}
       {activeTrip.cover_image && (
         <div
           aria-hidden="true"
@@ -264,18 +264,18 @@ export const ItineraryPage: React.FC = () => {
           <img
             src={activeTrip.cover_image}
             alt=""
-            className="w-full h-[55vh] object-cover opacity-20 blur-2xl scale-110"
+            className="w-full h-full object-cover object-center opacity-50 scale-[1.02]"
             onError={(e) => {
               (e.currentTarget as HTMLImageElement).style.display = 'none';
             }}
           />
-          <div className="absolute inset-0 bg-gradient-to-b from-ivory/40 via-ivory/85 to-ivory" />
+          <div className="absolute inset-0 bg-gradient-to-b from-ivory/25 via-ivory/55 to-ivory/82" />
         </div>
       )}
 
       {/* Cinematic Cover Photo Header Banner */}
       <div className="relative z-10 space-y-5">
-      <div className="relative rounded-3xl overflow-hidden shadow-soft bg-gradient-to-br from-navy via-navy-light to-sand-dark text-white min-h-[156px] sm:min-h-[188px] flex flex-col justify-end p-5 sm:p-6">
+      <div className="relative rounded-3xl overflow-hidden shadow-xl bg-gradient-to-br from-navy via-navy-light to-sand-dark text-white min-h-[220px] sm:min-h-[260px] flex flex-col justify-end p-5 sm:p-7 border border-white/25">
         {activeTrip.cover_image && (
           <>
             <img
@@ -286,7 +286,7 @@ export const ItineraryPage: React.FC = () => {
                 (e.currentTarget as HTMLImageElement).style.display = 'none';
               }}
             />
-            <div className="absolute inset-0 bg-gradient-to-t from-navy/90 via-navy/35 to-navy/10" />
+            <div className="absolute inset-0 bg-gradient-to-t from-navy/88 via-navy/20 to-transparent" />
           </>
         )}
         <div className="relative z-10 flex flex-wrap items-end justify-between gap-2">
