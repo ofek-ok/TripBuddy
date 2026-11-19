@@ -175,25 +175,50 @@ export const AppStoreProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     fetchWorkspace();
   }, [fetchWorkspace, authTokenState]);
 
-  // Real-time Server-Sent Events (SSE) subscription for live couple sync
+  // Real-time couple sync: SSE in persistent server + smart visibility/interval sync for Vercel Serverless
   const currentCoupleId = db.couples[0]?.id || null;
   useEffect(() => {
     const token = getAuthToken();
     if (!token || !currentCoupleId) return;
 
-    const es = new EventSource(`/api/realtime?token=${encodeURIComponent(token)}`);
-    es.onmessage = (event) => {
-      try {
-        const parsed = JSON.parse(event.data);
-        if (parsed.type === 'workspace_updated') {
-          fetchWorkspace(true);
+    const isLocalHost =
+      window.location.hostname === 'localhost' ||
+      window.location.hostname === '127.0.0.1' ||
+      window.location.hostname.startsWith('192.168.');
+
+    let es: EventSource | null = null;
+    if (isLocalHost) {
+      es = new EventSource(`/api/realtime?token=${encodeURIComponent(token)}`);
+      es.onmessage = (event) => {
+        try {
+          const parsed = JSON.parse(event.data);
+          if (parsed.type === 'workspace_updated') {
+            fetchWorkspace(true);
+          }
+        } catch {
+          // ignore heartbeat
         }
-      } catch {
-        // ignore heartbeat
+      };
+    }
+
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        fetchWorkspace(true);
       }
     };
+    document.addEventListener('visibilitychange', handleVisibility);
+
+    // Lightweight background sync every 15s while tab is active (ensures live couple sync on Vercel Serverless)
+    const intervalId = window.setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        fetchWorkspace(true);
+      }
+    }, 15000);
+
     return () => {
-      es.close();
+      es?.close();
+      document.removeEventListener('visibilitychange', handleVisibility);
+      window.clearInterval(intervalId);
     };
   }, [currentCoupleId, fetchWorkspace]);
 
