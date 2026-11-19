@@ -51,7 +51,7 @@ const PAYMENT_METHODS: PaymentMethod[] = [
   'Other',
 ];
 
-const CHART_COLORS = ['#172B3A', '#C49B70', '#A8B5A0', '#3E5C76', '#D8B998', '#7F9175'];
+const CHART_COLORS = ['#E84C88', '#3B1028', '#F2A2B8', '#9D2859', '#F78CB4', '#5E1D42'];
 
 export const BudgetPage: React.FC = () => {
   const { lang, t } = useI18n();
@@ -465,12 +465,12 @@ export const BudgetPage: React.FC = () => {
           <div className="h-56 w-full" dir="ltr">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={categoryReportData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#172B3A15" />
+                <CartesianGrid strokeDasharray="3 3" stroke="#3B102815" />
                 <XAxis dataKey="name" tick={{ fontSize: 10 }} />
                 <YAxis tick={{ fontSize: 10 }} />
                 <Tooltip />
-                <Bar dataKey="planned" fill="#A8B5A0" radius={[4, 4, 0, 0]} name="Planned" />
-                <Bar dataKey="actual" fill="#172B3A" radius={[4, 4, 0, 0]} name="Actual" />
+                <Bar dataKey="planned" fill="#F2A2B8" radius={[6, 6, 0, 0]} name="Planned" />
+                <Bar dataKey="actual" fill="#E84C88" radius={[6, 6, 0, 0]} name="Actual" />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -484,11 +484,11 @@ export const BudgetPage: React.FC = () => {
             <div className="h-48 w-full" dir="ltr">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={expensesByDayData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#172B3A15" />
+                  <CartesianGrid strokeDasharray="3 3" stroke="#3B102815" />
                   <XAxis dataKey="date" tick={{ fontSize: 10 }} />
                   <YAxis tick={{ fontSize: 10 }} />
                   <Tooltip />
-                  <Bar dataKey="total" fill="#C49B70" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="total" fill="#C22B67" radius={[6, 6, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </div>

@@ -49,7 +49,7 @@ const AppRoutes: React.FC = () => {
   if (isLoading) {
     return (
       <div className="min-h-dvh flex items-center justify-center bg-ivory text-navy text-sm font-semibold">
-        Loading TripBuddy...
+        Loading ForeverYoung...
       </div>
     );
   }

@@ -16,8 +16,8 @@ export const AppLogo: React.FC<AppLogoProps> = ({ size = 'md', className, onClic
 
   return (
     <img
-      src="/icons/icon-192.png"
-      alt="TripBuddy Logo"
+      src="/icons/icon-192.png?v=4"
+      alt="ForeverYoung Logo"
       onClick={onClick}
       className={cn(
         'object-cover shadow-sm ring-1 ring-white/15 shrink-0 select-none transition-transform duration-200 ease-out active:scale-95',

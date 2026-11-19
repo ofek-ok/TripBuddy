@@ -4,10 +4,10 @@
 
 @layer base {
   :root {
-    --color-navy: #172B3A;
-    --color-ivory: #F5F2EB;
-    --color-sage: #A8B5A0;
-    --color-sand: #C49B70;
+    --color-navy: #3B1028;
+    --color-ivory: #FFF7FA;
+    --color-sage: #F2A2B8;
+    --color-sand: #E84C88;
     --color-white: #FFFFFF;
   }
 
@@ -17,11 +17,21 @@
   }
 
   body {
-    background-color: #F5F2EB;
-    color: #172B3A;
-    font-family: 'Heebo', 'Inter', system-ui, -apple-system, sans-serif;
+    background-color: #FFF7FA;
+    background-image: radial-gradient(circle at top right, rgba(247, 140, 180, 0.14), transparent 42%),
+      radial-gradient(circle at bottom left, rgba(232, 76, 136, 0.08), transparent 40%);
+    background-attachment: fixed;
+    color: #3B1028;
+    font-family: 'Rubik', 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
     overflow-x: hidden;
     min-height: 100dvh;
+  }
+
+  h1,
+  h2,
+  h3 {
+    font-family: 'Fredoka', 'Rubik', system-ui, sans-serif;
+    letter-spacing: -0.015em;
   }
 }
 
@@ -43,6 +53,6 @@
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(23, 43, 58, 0.18);
+  background: rgba(232, 76, 136, 0.25);
   border-radius: 9999px;
 }

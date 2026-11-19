@@ -1,7 +1,7 @@
 // Travel Companion PWA Service Worker
 // Caches static shell assets only. NEVER caches Supabase Storage or sensitive documents.
 
-const CACHE_NAME = 'travel-companion-static-v3';
+const CACHE_NAME = 'foreveryoung-static-v4';
 const STATIC_ASSETS = [
   '/',
   '/index.html',

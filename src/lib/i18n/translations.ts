@@ -1,6 +1,6 @@
 export const translations = {
   he: {
-    appName: 'TripBuddy',
+    appName: 'ForeverYoung',
     tagline: 'מקום אחד לכל מסע',
     nav: {
       dashboard: 'בית',
@@ -45,7 +45,7 @@ export const translations = {
       actions: 'פעולות',
     },
     auth: {
-      welcomeTitle: 'ברוכים הבאים ל-TripBuddy',
+      welcomeTitle: 'ברוכים הבאים ל-ForeverYoung',
       welcomeSubtitle: 'תכנון וניהול משותף של כל חופשה בזמן אמת',
       signIn: 'התחברות',
       signUp: 'הרשמה',
@@ -229,7 +229,7 @@ export const translations = {
     },
   },
   en: {
-    appName: 'TripBuddy',
+    appName: 'ForeverYoung',
     tagline: 'One place for every journey',
     nav: {
       dashboard: 'Home',
@@ -274,7 +274,7 @@ export const translations = {
       actions: 'Actions',
     },
     auth: {
-      welcomeTitle: 'Welcome to TripBuddy',
+      welcomeTitle: 'Welcome to ForeverYoung',
       welcomeSubtitle: 'Plan and manage every journey together in real time',
       signIn: 'Sign In',
       signUp: 'Sign Up',
