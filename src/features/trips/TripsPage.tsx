@@ -760,47 +760,67 @@ export const TripsPage: React.FC = () => {
             </Select>
           </div>
 
-          {/* Cover Image Upload (Direct from Phone/PC + Optional URL) */}
-          <div className="space-y-2.5 p-3.5 rounded-2xl bg-ivory/70 border border-navy/10">
+          {/* Cover Image Upload (Direct Photo Upload Only) */}
+          <div className="space-y-2.5 p-3.5 rounded-2xl bg-ivory/70 border border-sand/25">
             <label className="text-xs font-bold text-navy flex items-center gap-1.5">
               <ImagePlus className="w-4 h-4 text-sand" />
-              <span>{lang === 'he' ? 'תמונת נושא לטיול (העלאה מהמכשיר או קישור)' : 'Trip Cover Image (Upload or URL)'}</span>
+              <span>{lang === 'he' ? 'תמונת נושא לטיול' : 'Trip Cover Photo'}</span>
             </label>
-            {coverPreviewUrl && (
-              <div className="relative h-28 rounded-xl overflow-hidden border border-navy/10">
+
+            {coverPreviewUrl ? (
+              <div className="relative h-36 rounded-2xl overflow-hidden border border-sand/30 shadow-sm group">
                 <img
                   src={coverPreviewUrl}
                   alt="Cover Preview"
                   className="w-full h-full object-cover"
                 />
-                <button
-                  type="button"
-                  onClick={() => {
-                    setCoverFile(null);
-                    setCoverImage('');
-                    setCoverPreviewUrl(null);
-                  }}
-                  className="absolute top-2 end-2 bg-navy/80 text-white p-1 rounded-full"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
+                <div className="absolute inset-0 bg-gradient-to-t from-navy/65 via-transparent to-transparent" />
+                <div className="absolute bottom-2.5 inset-x-2.5 flex items-center justify-between gap-2">
+                  <label className="cursor-pointer inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-surface/90 backdrop-blur-md text-navy text-xs font-bold shadow-sm hover:bg-surface transition-colors">
+                    <ImagePlus className="w-3.5 h-3.5 text-sand" />
+                    <span>{lang === 'he' ? 'החלפת תמונה' : 'Change Photo'}</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={(e) => handleCoverFileSelect(e.target.files?.[0] || null)}
+                      className="hidden"
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCoverFile(null);
+                      setCoverImage('');
+                      setCoverPreviewUrl(null);
+                    }}
+                    className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-navy/80 backdrop-blur-md text-white text-xs font-semibold hover:bg-red-600 transition-colors"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                    <span>{lang === 'he' ? 'הסרה' : 'Remove'}</span>
+                  </button>
+                </div>
               </div>
+            ) : (
+              <label className="cursor-pointer flex flex-col items-center justify-center gap-2 h-32 rounded-2xl border-2 border-dashed border-sand/45 bg-surface/80 hover:bg-sand/10 hover:border-sand transition-all text-center px-4">
+                <div className="w-10 h-10 rounded-2xl bg-sand/15 text-sand flex items-center justify-center">
+                  <ImagePlus className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="text-xs font-bold text-navy">
+                    {lang === 'he' ? 'לחצו להעלאת תמונת נושא מהגלריה' : 'Tap to upload a cover photo'}
+                  </div>
+                  <div className="text-[11px] text-navy/55 mt-0.5">
+                    {lang === 'he' ? 'JPG, PNG, WEBP, HEIC • דחיסה אוטומטית מהירה' : 'JPG, PNG, WEBP, HEIC • Auto-compressed'}
+                  </div>
+                </div>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => handleCoverFileSelect(e.target.files?.[0] || null)}
+                  className="hidden"
+                />
+              </label>
             )}
-            <input
-              type="file"
-              accept="image/*"
-              onChange={(e) => handleCoverFileSelect(e.target.files?.[0] || null)}
-              className="block w-full text-xs text-navy file:me-3 file:py-2 file:px-3.5 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-navy file:text-white hover:file:bg-navy-light"
-            />
-            <Input
-              type="url"
-              value={coverImage}
-              onChange={(e) => {
-                setCoverImage(e.target.value);
-                if (!coverFile) setCoverPreviewUrl(e.target.value || null);
-              }}
-              placeholder={lang === 'he' ? 'או הדביקו קישור ישיר לתמונה (אופציונלי)' : 'Or paste direct image URL (optional)'}
-            />
           </div>
 
           <Textarea

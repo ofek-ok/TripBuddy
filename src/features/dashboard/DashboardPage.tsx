@@ -101,41 +101,63 @@ export const DashboardPage: React.FC = () => {
     .slice(0, 5);
 
   return (
-    <div className="space-y-5">
-      {/* Hero Upcoming Trip Card with Prominent Countdown */}
-      <div className="rounded-3xl p-5 sm:p-7 text-white shadow-soft relative overflow-hidden bg-gradient-to-br from-navy via-navy-light to-sand-dark">
+    <div className="relative space-y-5">
+      {/* Immersive Ambient Trip Cover Backdrop */}
+      {activeTrip.cover_image && (
+        <div
+          aria-hidden="true"
+          className="fixed inset-0 md:ms-64 lg:ms-72 pointer-events-none z-0 overflow-hidden"
+        >
+          <img
+            src={activeTrip.cover_image}
+            alt=""
+            className="w-full h-[65vh] object-cover opacity-25 blur-2xl scale-110"
+            onError={(e) => {
+              (e.currentTarget as HTMLImageElement).style.display = 'none';
+            }}
+          />
+          <div className="absolute inset-0 bg-gradient-to-b from-ivory/35 via-ivory/80 to-ivory" />
+        </div>
+      )}
+
+      {/* Editorial Magazine Hero Card — Showcases Vivid Trip Cover Photo */}
+      <div className="relative z-10 space-y-5">
+      <div className="relative rounded-3xl text-white shadow-soft overflow-hidden bg-gradient-to-br from-navy via-navy-light to-sand-dark min-h-[340px] sm:min-h-[380px] flex flex-col justify-between p-5 sm:p-7">
         {activeTrip.cover_image && (
           <>
             <img
               src={activeTrip.cover_image}
               alt={activeTrip.name}
-              className="absolute inset-0 w-full h-full object-cover opacity-45"
+              className="absolute inset-0 w-full h-full object-cover"
               onError={(e) => {
                 (e.currentTarget as HTMLImageElement).style.display = 'none';
               }}
             />
-            <div className="absolute inset-0 bg-gradient-to-t from-navy/95 via-navy/75 to-navy/50" />
+            {/* Clean cinematic scrim: keeps upper photography crisp & unobstructed while ensuring AA+ contrast at bottom */}
+            <div className="absolute inset-0 bg-gradient-to-t from-navy/92 via-navy/35 to-navy/15" />
           </>
         )}
 
-        <div className="relative z-10 space-y-5">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <Badge variant="sand" className="bg-sand text-white border-0 shadow-sm">
-              {t.trips.statuses[activeTrip.status]}
-            </Badge>
-            <span className="text-xs font-medium text-ivory/85 flex items-center gap-1.5 bg-white/10 px-3 py-1 rounded-full backdrop-blur-xs">
-              <CalendarRange className="w-3.5 h-3.5 text-sand" />
-              {formatDate(activeTrip.start_date, lang)} – {formatDate(activeTrip.end_date, lang)}
-            </span>
-          </div>
+        {/* Top Floating Glass Pills (leaves middle of photo open & vivid!) */}
+        <div className="relative z-10 flex flex-wrap items-center justify-between gap-2">
+          <Badge variant="sand" className="bg-sand/95 backdrop-blur-md text-white border-0 shadow-md">
+            {t.trips.statuses[activeTrip.status]}
+          </Badge>
+          <span className="text-xs font-semibold text-white flex items-center gap-1.5 bg-navy/50 border border-white/20 px-3 py-1.5 rounded-full backdrop-blur-md shadow-sm">
+            <CalendarRange className="w-3.5 h-3.5 text-sand-light" />
+            {formatDate(activeTrip.start_date, lang)} – {formatDate(activeTrip.end_date, lang)}
+          </span>
+        </div>
 
+        {/* Bottom Editorial Overlay: Title + Multi-Destination + Countdown + Progress */}
+        <div className="relative z-10 space-y-4 pt-16 sm:pt-20">
           <div className="flex flex-col md:flex-row md:items-end justify-between gap-5">
             <div className="space-y-2">
-              <h1 className="text-2xl sm:text-4xl font-extrabold tracking-tight leading-tight">
+              <h1 className="text-2xl sm:text-4xl font-extrabold tracking-tight leading-tight drop-shadow-sm">
                 {activeTrip.name}
               </h1>
-              <div className="flex flex-wrap items-center gap-2 text-xs sm:text-sm text-ivory/90">
-                <MapPin className="w-4 h-4 text-sand shrink-0" />
+              <div className="flex flex-wrap items-center gap-2 text-xs sm:text-sm text-white/95 drop-shadow-xs">
+                <MapPin className="w-4 h-4 text-sand-light shrink-0" />
                 <span>
                   {activeTrip.destination} ({activeTrip.country})
                 </span>
@@ -145,11 +167,11 @@ export const DashboardPage: React.FC = () => {
                 <div className="flex flex-wrap items-center gap-1.5 pt-1">
                   {activeTrip.destinations.map((stop, idx) => (
                     <React.Fragment key={stop.id || idx}>
-                      <span className="px-2.5 py-0.5 rounded-full bg-white/15 text-ivory text-xs font-medium">
+                      <span className="px-2.5 py-0.5 rounded-full bg-navy/55 backdrop-blur-md border border-white/15 text-white text-xs font-medium">
                         {stop.city}, {stop.country}
                       </span>
                       {idx < activeTrip.destinations!.length - 1 && (
-                        <span className="text-sand text-xs font-bold">
+                        <span className="text-sand-light text-xs font-bold">
                           {lang === 'he' ? '←' : '→'}
                         </span>
                       )}
@@ -224,7 +246,7 @@ export const DashboardPage: React.FC = () => {
       </div>
 
       {/* Quick Actions Strip */}
-      <div className="space-y-2">
+      <div className="relative z-10 space-y-2">
         <h2 className="text-xs font-bold uppercase tracking-wider text-navy/60 px-1">
           {t.dashboard.quickActions}
         </h2>
@@ -441,6 +463,7 @@ export const DashboardPage: React.FC = () => {
           </div>
         </Card>
       )}
+      </div>
     </div>
   );
 };
