@@ -12,7 +12,12 @@ import {
   Select,
   Textarea,
 } from '@/components/ui/primitives';
-import { CURRENCIES, formatCurrency, formatDate } from '@/lib/utils/formatters';
+import {
+  CURRENCIES,
+  formatCurrency,
+  formatDate,
+  formatDateWithWeekday,
+} from '@/lib/utils/formatters';
 import {
   CurrencyCode,
   EventCategory,
@@ -314,7 +319,7 @@ export const ItineraryPage: React.FC = () => {
       <div className="sticky top-[62px] z-20 -mx-1 px-2.5 py-2 rounded-2xl bg-surface/92 backdrop-blur-md border border-sand/25 shadow-soft flex items-center justify-between gap-2">
         <div className="text-xs font-bold text-navy/80 truncate ps-1">
           {selectedDay
-            ? `${t.itinerary.day} ${selectedDay.day_number} • ${formatDate(selectedDay.date, lang)}`
+            ? `${t.itinerary.day} ${selectedDay.day_number} • ${formatDateWithWeekday(selectedDay.date, lang)}`
             : activeTrip.name}
         </div>
         <div className="flex items-center gap-2 shrink-0">
@@ -358,10 +363,10 @@ export const ItineraryPage: React.FC = () => {
               </div>
               <div
                 className={`text-[11px] mt-0.5 ${
-                  isSelected ? 'text-ivory/80' : 'text-navy/55'
+                  isSelected ? 'text-ivory/85' : 'text-navy/60'
                 }`}
               >
-                {formatDate(day.date, lang)}
+                {formatDateWithWeekday(day.date, lang)}
               </div>
             </button>
           );
@@ -377,7 +382,7 @@ export const ItineraryPage: React.FC = () => {
                 {t.itinerary.day} {selectedDay.day_number}
               </Badge>
               <span className="text-sm font-bold text-navy">
-                {formatDate(selectedDay.date, lang)}
+                {formatDateWithWeekday(selectedDay.date, lang)}
               </span>
               {selectedDay.location && (
                 <span className="text-xs text-sand font-semibold flex items-center gap-1">
@@ -778,7 +783,7 @@ export const ItineraryPage: React.FC = () => {
           >
             {activeDays.map((d) => (
               <option key={d.id} value={d.id}>
-                {t.itinerary.day} {d.day_number} ({formatDate(d.date, lang)})
+                {t.itinerary.day} {d.day_number} ({formatDateWithWeekday(d.date, lang)})
               </option>
             ))}
           </Select>

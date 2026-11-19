@@ -41,6 +41,34 @@ export function formatDate(dateStr: string | null | undefined, lang: Language = 
   }
 }
 
+export function formatWeekday(
+  dateStr: string | null | undefined,
+  lang: Language = 'he',
+  style: 'long' | 'short' = 'long'
+): string {
+  if (!dateStr) return '';
+  try {
+    const [year, month, day] = dateStr.split('T')[0].split('-').map(Number);
+    const date = new Date(year, month - 1, day);
+    return new Intl.DateTimeFormat(lang === 'he' ? 'he-IL' : 'en-GB', {
+      weekday: style,
+    }).format(date);
+  } catch {
+    return '';
+  }
+}
+
+export function formatDateWithWeekday(
+  dateStr: string | null | undefined,
+  lang: Language = 'he',
+  style: 'long' | 'short' = 'long'
+): string {
+  if (!dateStr) return '';
+  const wd = formatWeekday(dateStr, lang, style);
+  const dt = formatDate(dateStr, lang);
+  return wd ? `${wd}, ${dt}` : dt;
+}
+
 export function formatShortDate(dateStr: string | null | undefined, lang: Language = 'he'): string {
   if (!dateStr) return '';
   try {
