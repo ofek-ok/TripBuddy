@@ -51,7 +51,18 @@ export type PaymentMethod =
   | 'Digital Wallet'
   | 'Other';
 
-export type CurrencyCode = 'ILS' | 'EUR' | 'USD' | 'GBP' | 'JPY' | 'CHF' | 'THB' | 'CAD' | 'AUD';
+export type CurrencyCode =
+  | 'ILS'
+  | 'EUR'
+  | 'USD'
+  | 'GBP'
+  | 'PLN'
+  | 'HUF'
+  | 'JPY'
+  | 'CHF'
+  | 'THB'
+  | 'CAD'
+  | 'AUD';
 
 export interface Profile {
   user_id: string;

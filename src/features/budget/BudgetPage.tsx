@@ -13,6 +13,7 @@ import {
   Textarea,
 } from '@/components/ui/primitives';
 import { CURRENCIES, formatCurrency, formatShortDate } from '@/lib/utils/formatters';
+import { apiRequest } from '@/lib/api/client';
 import {
   calculateTaxFreeRefund,
   matchTaxFreeCountryFromTrip,
@@ -36,6 +37,7 @@ import {
   Eye,
   FileText,
   Plus,
+  RefreshCw,
   SlidersHorizontal,
   Trash2,
   Wallet,
@@ -109,6 +111,75 @@ export const BudgetPage: React.FC = () => {
   const [taxFreeFile, setTaxFreeFile] = useState<File | null>(null);
   const [notes, setNotes] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+
+  // Live official exchange rates (cached from /api/exchange-rates)
+  const [liveRates, setLiveRates] = useState<Record<string, number> | null>(null);
+  const [liveRatesDate, setLiveRatesDate] = useState<string>('');
+  const [liveRatesSource, setLiveRatesSource] = useState<string>('');
+  const [loadingRates, setLoadingRates] = useState<boolean>(false);
+
+  const fetchLiveRates = async (forceRefresh = false) => {
+    try {
+      setLoadingRates(true);
+      const data = await apiRequest<{
+        date: string;
+        source: string;
+        rates: Record<string, number>;
+      }>(`/api/exchange-rates${forceRefresh ? '?refresh=1' : ''}`);
+      setLiveRates(data.rates);
+      setLiveRatesDate(data.date);
+      setLiveRatesSource(data.source);
+      return data;
+    } catch {
+      return null;
+    } finally {
+      setLoadingRates(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchLiveRates();
+  }, []);
+
+  const computePairRate = (
+    fromCurr: string,
+    toCurr: string,
+    ratesMap: Record<string, number> | null
+  ): string | null => {
+    if (fromCurr === toCurr) return '1';
+    if (!ratesMap) return null;
+    const fromVal = ratesMap[fromCurr];
+    const toVal = ratesMap[toCurr];
+    if (!fromVal || !toVal) return null;
+    const raw = toVal / fromVal;
+    const precision = raw < 0.1 ? 5 : 4;
+    return String(Number(raw.toFixed(precision)));
+  };
+
+  const applyLiveRateForCurrency = async (
+    nextCurr: CurrencyCode,
+    tripCurr: CurrencyCode,
+    forceRefresh = false
+  ) => {
+    if (nextCurr === tripCurr) {
+      setExchangeRate('1');
+      return;
+    }
+    let ratesMap = liveRates;
+    let rateDate = liveRatesDate;
+    if (!ratesMap || forceRefresh) {
+      const fresh = await fetchLiveRates(forceRefresh);
+      if (fresh) {
+        ratesMap = fresh.rates;
+        rateDate = fresh.date;
+      }
+    }
+    const computed = computePairRate(nextCurr, tripCurr, ratesMap);
+    if (computed) {
+      setExchangeRate(computed);
+      if (rateDate) setExchangeRateDate(rateDate);
+    }
+  };
 
   useEffect(() => {
     if (searchParams.get('action') === 'new' && activeTrip) {
@@ -724,7 +795,7 @@ export const BudgetPage: React.FC = () => {
               onChange={(e) => {
                 const nextCurr = e.target.value as CurrencyCode;
                 setCurrency(nextCurr);
-                if (nextCurr === activeTrip.currency) setExchangeRate('1');
+                applyLiveRateForCurrency(nextCurr, activeTrip.currency);
               }}
             >
               {CURRENCIES.map((c) => (
@@ -736,22 +807,45 @@ export const BudgetPage: React.FC = () => {
           </div>
 
           {currency !== activeTrip.currency && (
-            <div className="grid grid-cols-2 gap-3 p-3 rounded-xl bg-ivory">
-              <Input
-                type="number"
-                step="0.0001"
-                min="0.0001"
-                required
-                label={`${t.budget.exchangeRate} (${currency} → ${activeTrip.currency})`}
-                value={exchangeRate}
-                onChange={(e) => setExchangeRate(e.target.value)}
-              />
-              <Input
-                type="date"
-                label={t.budget.exchangeRateDate}
-                value={exchangeRateDate}
-                onChange={(e) => setExchangeRateDate(e.target.value)}
-              />
+            <div className="space-y-2 p-3 rounded-xl bg-ivory">
+              <div className="flex items-center justify-between gap-2 text-[11px]">
+                <span className="font-semibold text-sage-dark">
+                  {loadingRates
+                    ? lang === 'he'
+                      ? 'טוען שער יציג...'
+                      : 'Fetching official rate...'
+                    : lang === 'he'
+                      ? `שער יציג אוטומטי${liveRatesDate ? ` (${liveRatesDate})` : ''}`
+                      : `Auto official rate${liveRatesDate ? ` (${liveRatesDate})` : ''}`}
+                  {liveRatesSource ? ` • ${liveRatesSource}` : ''}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => applyLiveRateForCurrency(currency, activeTrip.currency, true)}
+                  disabled={loadingRates}
+                  className="inline-flex items-center gap-1 font-bold text-navy hover:text-sand transition-colors"
+                >
+                  <RefreshCw className={`w-3 h-3 ${loadingRates ? 'animate-spin' : ''}`} />
+                  <span>{lang === 'he' ? 'רענון שער' : 'Refresh'}</span>
+                </button>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <Input
+                  type="number"
+                  step="0.00001"
+                  min="0.00001"
+                  required
+                  label={`${t.budget.exchangeRate} (${currency} → ${activeTrip.currency})`}
+                  value={exchangeRate}
+                  onChange={(e) => setExchangeRate(e.target.value)}
+                />
+                <Input
+                  type="date"
+                  label={t.budget.exchangeRateDate}
+                  value={exchangeRateDate}
+                  onChange={(e) => setExchangeRateDate(e.target.value)}
+                />
+              </div>
             </div>
           )}
 

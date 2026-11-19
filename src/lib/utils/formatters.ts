@@ -5,6 +5,8 @@ export const CURRENCIES: { code: CurrencyCode; symbol: string; labelHe: string; 
   { code: 'EUR', symbol: '€', labelHe: 'אירו (€)', labelEn: 'Euro (€)' },
   { code: 'USD', symbol: '$', labelHe: 'דולר אמריקאי ($)', labelEn: 'US Dollar ($)' },
   { code: 'GBP', symbol: '£', labelHe: 'ליש"ט (£)', labelEn: 'British Pound (£)' },
+  { code: 'PLN', symbol: 'zł', labelHe: 'זלוטי פולני (zł)', labelEn: 'Polish Zloty (zł)' },
+  { code: 'HUF', symbol: 'Ft', labelHe: 'פורינט הונגרי (Ft)', labelEn: 'Hungarian Forint (Ft)' },
   { code: 'JPY', symbol: '¥', labelHe: 'ין יפני (¥)', labelEn: 'Japanese Yen (¥)' },
   { code: 'CHF', symbol: 'CHF', labelHe: 'פרנק שוויצרי (CHF)', labelEn: 'Swiss Franc (CHF)' },
   { code: 'THB', symbol: '฿', labelHe: 'בהט תאילנדי (฿)', labelEn: 'Thai Baht (฿)' },

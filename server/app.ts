@@ -862,31 +862,124 @@ const EVENT_TO_BUDGET_CAT: Record<string, string> = {
   Other: 'Other',
 };
 
-// Approximate USD base rates for automatic multi-currency conversion when syncing booked events
-const USD_EXCHANGE_RATES: Record<string, number> = {
+// Fallback USD base rates if external rate providers are temporarily unreachable
+const FALLBACK_USD_RATES: Record<string, number> = {
   USD: 1,
   EUR: 0.92,
   ILS: 3.7,
   GBP: 0.79,
+  PLN: 4.0,
+  HUF: 370,
   JPY: 152,
   THB: 35,
   CHF: 0.88,
-  PLN: 4.0,
-  HUF: 370,
   CZK: 23.5,
   CAD: 1.38,
   AUD: 1.53,
 };
 
-function getEstimatedExchangeRate(fromCurrency: string, toCurrency: string): number {
+interface CachedRates {
+  rates: Record<string, number>;
+  date: string;
+  source: string;
+  fetchedAt: number;
+}
+
+let cachedUsdRates: CachedRates | null = null;
+const RATES_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
+
+async function getLiveUsdRates(forceRefresh = false): Promise<CachedRates> {
+  if (!forceRefresh && cachedUsdRates && Date.now() - cachedUsdRates.fetchedAt < RATES_CACHE_TTL_MS) {
+    return cachedUsdRates;
+  }
+
+  // Primary: Frankfurter (Official European Central Bank reference rates, free & no key)
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 5000);
+    const res = await fetch('https://api.frankfurter.app/latest?from=USD', {
+      signal: controller.signal,
+    });
+    clearTimeout(timer);
+    if (res.ok) {
+      const data = (await res.json()) as { date?: string; rates?: Record<string, number> };
+      if (data?.rates && Object.keys(data.rates).length > 5) {
+        cachedUsdRates = {
+          rates: { ...FALLBACK_USD_RATES, USD: 1, ...data.rates },
+          date: data.date || new Date().toISOString().split('T')[0],
+          source: 'ECB (Frankfurter)',
+          fetchedAt: Date.now(),
+        };
+        return cachedUsdRates;
+      }
+    }
+  } catch {
+    // try secondary provider
+  }
+
+  // Secondary: Open Exchange Rates API (free tier, no key)
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 5000);
+    const res = await fetch('https://open.er-api.com/v6/latest/USD', {
+      signal: controller.signal,
+    });
+    clearTimeout(timer);
+    if (res.ok) {
+      const data = (await res.json()) as {
+        time_last_update_utc?: string;
+        rates?: Record<string, number>;
+      };
+      if (data?.rates && Object.keys(data.rates).length > 5) {
+        cachedUsdRates = {
+          rates: { ...FALLBACK_USD_RATES, USD: 1, ...data.rates },
+          date: new Date().toISOString().split('T')[0],
+          source: 'ExchangeRate-API',
+          fetchedAt: Date.now(),
+        };
+        return cachedUsdRates;
+      }
+    }
+  } catch {
+    // fall back to static rates
+  }
+
+  return (
+    cachedUsdRates || {
+      rates: { ...FALLBACK_USD_RATES },
+      date: new Date().toISOString().split('T')[0],
+      source: 'Fallback',
+      fetchedAt: Date.now(),
+    }
+  );
+}
+
+async function getLiveExchangeRate(fromCurrency: string, toCurrency: string): Promise<number> {
   const from = fromCurrency.toUpperCase();
   const to = toCurrency.toUpperCase();
   if (from === to) return 1;
-  const fromPerUsd = USD_EXCHANGE_RATES[from];
-  const toPerUsd = USD_EXCHANGE_RATES[to];
+  const { rates } = await getLiveUsdRates();
+  const fromPerUsd = rates[from];
+  const toPerUsd = rates[to];
   if (!fromPerUsd || !toPerUsd) return 1;
-  return Math.round((toPerUsd / fromPerUsd) * 10000) / 10000;
+  const raw = toPerUsd / fromPerUsd;
+  return raw < 0.1 ? Math.round(raw * 100000) / 100000 : Math.round(raw * 10000) / 10000;
 }
+
+app.get('/api/exchange-rates', async (req, res) => {
+  try {
+    const force = req.query.refresh === '1';
+    const data = await getLiveUsdRates(force);
+    res.json({
+      base: 'USD',
+      date: data.date,
+      source: data.source,
+      rates: data.rates,
+    });
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
 
 async function syncBookedEventToExpense(
   ev: {
@@ -925,7 +1018,7 @@ async function syncBookedEventToExpense(
   const tripCurrency = (trip?.currency || 'EUR').trim().toUpperCase();
   const expCurrency = (ev.currency || tripCurrency).trim().toUpperCase();
   const expDate = day?.date || new Date().toISOString().split('T')[0];
-  const exchangeRate = getEstimatedExchangeRate(expCurrency, tripCurrency);
+  const exchangeRate = await getLiveExchangeRate(expCurrency, tripCurrency);
   const amountNum = Number(ev.estimated_cost);
   const baseAmount = Math.round(amountNum * exchangeRate * 100) / 100;
 
