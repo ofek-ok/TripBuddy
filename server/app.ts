@@ -3,7 +3,7 @@ import cors from 'cors';
 import multer from 'multer';
 import crypto from 'crypto';
 import dotenv from 'dotenv';
-import { pool, query } from './db';
+import { pool, query } from './db.js';
 import {
   AuthenticatedRequest,
   hashPassword,
@@ -11,8 +11,8 @@ import {
   signToken,
   verifyPassword,
   verifyToken,
-} from './auth';
-import { broadcastCoupleUpdate, subscribeCoupleClient } from './realtime';
+} from './auth.js';
+import { broadcastCoupleUpdate, subscribeCoupleClient } from './realtime.js';
 
 dotenv.config();
 

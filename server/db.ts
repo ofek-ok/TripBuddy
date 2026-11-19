@@ -9,12 +9,10 @@ types.setTypeParser(1082, (val: string) => val);
 types.setTypeParser(1700, (val: string) => (val === null ? null : parseFloat(val)));
 types.setTypeParser(20, (val: string) => (val === null ? null : parseInt(val, 10)));
 
-if (!process.env.DATABASE_URL) {
-  throw new Error('DATABASE_URL is missing in .env');
-}
+const connectionString = process.env.DATABASE_URL;
 
 export const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
+  connectionString: connectionString || 'postgresql://missing-database-url',
   ssl: { rejectUnauthorized: false },
   max: 10,
 });
@@ -23,6 +21,9 @@ export async function query<T = Record<string, unknown>>(
   text: string,
   params?: unknown[]
 ): Promise<T[]> {
+  if (!process.env.DATABASE_URL) {
+    throw new Error('DATABASE_URL environment variable is not configured on the server');
+  }
   const result = await pool.query(text, params);
   return result.rows as T[];
 }
