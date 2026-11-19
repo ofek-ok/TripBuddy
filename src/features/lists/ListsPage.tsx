@@ -46,12 +46,10 @@ interface SmartPreset {
 }
 
 const PACKING_CATEGORIES = [
-  { id: 'Documents', labelHe: 'מסמכים וטיסה', labelEn: 'Documents & Flight', icon: FileText, color: 'bg-navy text-white' },
-  { id: 'Clothing', labelHe: 'ביגוד והנעלה', labelEn: 'Clothing & Shoes', icon: Shirt, color: 'bg-sand text-white' },
-  { id: 'Toiletries', labelHe: 'טואלטיקה ורחצה', labelEn: 'Toiletries', icon: Sparkles, color: 'bg-sage text-navy' },
-  { id: 'Electronics', labelHe: 'אלקטרוניקה וציוד', labelEn: 'Electronics', icon: Laptop, color: 'bg-navy/15 text-navy' },
-  { id: 'Health', labelHe: 'תרופות ועזרה ראשונה', labelEn: 'Health & Meds', icon: HeartPulse, color: 'bg-red-100 text-red-800' },
-  { id: 'General', labelHe: 'שונות ותיק יד', labelEn: 'Carry-on & Misc', icon: Backpack, color: 'bg-ivory text-navy' },
+  { id: 'Backpack', labelHe: 'תיק גב', labelEn: 'Backpack', icon: Backpack, color: 'bg-navy text-white' },
+  { id: 'Trolley', labelHe: 'טרולי (עלייה למטוס)', labelEn: 'Carry-on Trolley', icon: Luggage, color: 'bg-sand text-white' },
+  { id: 'Toiletry Bag', labelHe: 'תיק רחצה', labelEn: 'Toiletry Bag', icon: Sparkles, color: 'bg-sage text-navy' },
+  { id: 'Suitcase', labelHe: 'מזוודה גדולה', labelEn: 'Main Suitcase', icon: Shirt, color: 'bg-navy/15 text-navy' },
 ];
 
 const SMART_PACKING_PRESETS: SmartPreset[] = [
@@ -59,59 +57,60 @@ const SMART_PACKING_PRESETS: SmartPreset[] = [
     id: 'essentials',
     titleHe: 'חובה לטיסה ומסמכים',
     titleEn: 'Flight & Documents',
-    descHe: 'דרכונים, כרטיסים, ארנק וביטוח',
-    descEn: 'Passports, tickets, wallet & insurance',
+    descHe: 'נכנס לתיק גב: דרכונים, כרטיסים, ארנק וביטוח',
+    descEn: 'Goes in Backpack: passports, tickets, wallet',
     icon: Plane,
     items: [
-      { item_name_he: 'דרכונים בתוקף', item_name_en: 'Valid Passports', category: 'Documents', quantity: 2 },
-      { item_name_he: 'כרטיסי עלייה למטוס (Boarding Pass)', item_name_en: 'Boarding Passes', category: 'Documents', quantity: 2 },
-      { item_name_he: 'פוליסת ביטוח נסיעות', item_name_en: 'Travel Insurance Policy', category: 'Documents', quantity: 1 },
-      { item_name_he: 'כרטיסי אשראי ומזומן במטבע מקומי', item_name_en: 'Credit Cards & Local Cash', category: 'Documents', quantity: 2 },
-      { item_name_he: 'רישיון נהיגה בינלאומי + רגיל', item_name_en: 'Driver Licenses', category: 'Documents', quantity: 1 },
+      { item_name_he: 'דרכונים בתוקף', item_name_en: 'Valid Passports', category: 'Backpack', quantity: 2 },
+      { item_name_he: 'כרטיסי עלייה למטוס (Boarding Pass)', item_name_en: 'Boarding Passes', category: 'Backpack', quantity: 2 },
+      { item_name_he: 'פוליסת ביטוח נסיעות', item_name_en: 'Travel Insurance Policy', category: 'Backpack', quantity: 1 },
+      { item_name_he: 'כרטיסי אשראי ומזומן במטבע מקומי', item_name_en: 'Credit Cards & Local Cash', category: 'Backpack', quantity: 2 },
+      { item_name_he: 'רישיון נהיגה בינלאומי + רגיל', item_name_en: 'Driver Licenses', category: 'Backpack', quantity: 1 },
     ],
   },
   {
     id: 'electronics',
     titleHe: 'אלקטרוניקה וטעינה',
     titleEn: 'Tech & Chargers',
-    descHe: 'מטענים, סוללת גיבוי, מתאם ואוזניות',
-    descEn: 'Chargers, power bank, adapter & headphones',
+    descHe: 'נכנס לתיק גב ולטרולי: מטענים, Power Bank ומתאם',
+    descEn: 'Backpack & Trolley: chargers, power bank, adapter',
     icon: Laptop,
     items: [
-      { item_name_he: 'מטענים לטלפונים', item_name_en: 'Phone Chargers', category: 'Electronics', quantity: 2 },
-      { item_name_he: 'סוללת גיבוי ניידת (Power Bank)', item_name_en: 'Power Bank', category: 'Electronics', quantity: 1 },
-      { item_name_he: 'מתאם חשמל אוניברסלי', item_name_en: 'Universal Power Adapter', category: 'Electronics', quantity: 2 },
-      { item_name_he: 'אוזניות לטיסה', item_name_en: 'Headphones / Earbuds', category: 'Electronics', quantity: 2 },
+      { item_name_he: 'מטענים לטלפונים', item_name_en: 'Phone Chargers', category: 'Backpack', quantity: 2 },
+      { item_name_he: 'סוללת גיבוי ניידת (Power Bank)', item_name_en: 'Power Bank', category: 'Backpack', quantity: 1 },
+      { item_name_he: 'אוזניות לטיסה', item_name_en: 'Headphones / Earbuds', category: 'Backpack', quantity: 2 },
+      { item_name_he: 'מתאם חשמל אוניברסלי', item_name_en: 'Universal Power Adapter', category: 'Trolley', quantity: 2 },
     ],
   },
   {
     id: 'toiletries',
     titleHe: 'תיק רחצה ובריאות',
     titleEn: 'Toiletries & First Aid',
-    descHe: 'היגיינה אישית, תרופות ופלסטרים',
-    descEn: 'Personal care, meds & first aid',
+    descHe: 'נכנס לתיק רחצה: היגיינה אישית, תרופות ופלסטרים',
+    descEn: 'Toiletry Bag: personal care, meds & first aid',
     icon: HeartPulse,
     items: [
-      { item_name_he: 'מברשות ומשחת שיניים', item_name_en: 'Toothbrushes & Toothpaste', category: 'Toiletries', quantity: 2 },
-      { item_name_he: 'דאודורנט ובושם', item_name_en: 'Deodorant & Perfume', category: 'Toiletries', quantity: 2 },
-      { item_name_he: 'משככי כאבים ופלסטרים', item_name_en: 'Painkillers & Band-aids', category: 'Health', quantity: 1 },
-      { item_name_he: 'תרופות קבועות / ויטמינים', item_name_en: 'Personal Medications', category: 'Health', quantity: 1 },
-      { item_name_he: 'שפתון לחות וקרם ידיים', item_name_en: 'Lip Balm & Hand Cream', category: 'Toiletries', quantity: 1 },
+      { item_name_he: 'מברשות ומשחת שיניים', item_name_en: 'Toothbrushes & Toothpaste', category: 'Toiletry Bag', quantity: 2 },
+      { item_name_he: 'דאודורנט ובושם', item_name_en: 'Deodorant & Perfume', category: 'Toiletry Bag', quantity: 2 },
+      { item_name_he: 'משככי כאבים ופלסטרים', item_name_en: 'Painkillers & Band-aids', category: 'Toiletry Bag', quantity: 1 },
+      { item_name_he: 'תרופות קבועות / ויטמינים', item_name_en: 'Personal Medications', category: 'Toiletry Bag', quantity: 1 },
+      { item_name_he: 'שפתון לחות וקרם ידיים', item_name_en: 'Lip Balm & Hand Cream', category: 'Toiletry Bag', quantity: 1 },
     ],
   },
   {
     id: 'clothing',
     titleHe: 'מלתחה בסיסית לטיול',
     titleEn: 'Core Wardrobe',
-    descHe: 'חולצות, מכנסיים, מעיל ונעלי הליכה',
-    descEn: 'Tops, pants, jacket & walking shoes',
+    descHe: 'נכנס למזוודה ולטרולי: מעיל, בגדים ונעלי הליכה',
+    descEn: 'Suitcase & Trolley: coat, outfits & walking shoes',
     icon: Shirt,
     items: [
-      { item_name_he: 'נעלי הליכה נוחות', item_name_en: 'Comfortable Walking Shoes', category: 'Clothing', quantity: 2 },
-      { item_name_he: 'מעיל / ז׳קט מחמם', item_name_en: 'Jacket / Coat', category: 'Clothing', quantity: 2 },
-      { item_name_he: 'חולצות להחלפה', item_name_en: 'Shirts & Tops', category: 'Clothing', quantity: 6 },
-      { item_name_he: 'מכנסיים / ג׳ינסים', item_name_en: 'Pants & Jeans', category: 'Clothing', quantity: 4 },
-      { item_name_he: 'גרביים והלבשה תחתונה', item_name_en: 'Socks & Underwear', category: 'Clothing', quantity: 7 },
+      { item_name_he: 'סט בגדים להחלפה ליום הראשון', item_name_en: 'First-Day Change of Clothes', category: 'Trolley', quantity: 2 },
+      { item_name_he: 'נעלי הליכה נוחות', item_name_en: 'Comfortable Walking Shoes', category: 'Suitcase', quantity: 2 },
+      { item_name_he: 'מעיל / ז׳קט מחמם', item_name_en: 'Jacket / Coat', category: 'Suitcase', quantity: 2 },
+      { item_name_he: 'חולצות להחלפה', item_name_en: 'Shirts & Tops', category: 'Suitcase', quantity: 6 },
+      { item_name_he: 'מכנסיים / ג׳ינסים', item_name_en: 'Pants & Jeans', category: 'Suitcase', quantity: 4 },
+      { item_name_he: 'גרביים והלבשה תחתונה', item_name_en: 'Socks & Underwear', category: 'Suitcase', quantity: 7 },
     ],
   },
 ];
@@ -155,7 +154,7 @@ export const ListsPage: React.FC = () => {
 
   const [addPackingModalOpen, setAddPackingModalOpen] = useState(false);
   const [packItemName, setPackItemName] = useState('');
-  const [packCategory, setPackCategory] = useState('Clothing');
+  const [packCategory, setPackCategory] = useState('Suitcase');
   const [packQuantity, setPackQuantity] = useState('1');
   const [packAssignee, setPackAssignee] = useState('');
 
@@ -397,7 +396,7 @@ export const ListsPage: React.FC = () => {
         items.length > 0 ||
         (packStatusFilter === 'ALL' &&
           packOwnerFilter === 'ALL' &&
-          ['Documents', 'Clothing', 'Toiletries', 'Electronics'].includes(catKey))
+          ['Backpack', 'Trolley', 'Toiletry Bag', 'Suitcase'].includes(catKey))
     );
   }, [filteredPackingItems, packStatusFilter, packOwnerFilter]);
 
@@ -1121,7 +1120,7 @@ export const ListsPage: React.FC = () => {
           />
           <div className="grid grid-cols-2 gap-3">
             <Select
-              label={t.common.category}
+              label={lang === 'he' ? 'איפה לארוז? (תיק / מזוודה)' : 'Where to Pack? (Bag)'}
               value={packCategory}
               onChange={(e) => setPackCategory(e.target.value)}
             >

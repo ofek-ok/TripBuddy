@@ -28,6 +28,7 @@ export const AuthWorkspacePage: React.FC<{ manageMode?: boolean }> = ({ manageMo
     signUp,
     signOut,
     createCoupleWorkspace,
+    updateCoupleWorkspace,
     joinCoupleWorkspace,
     addPartnerProfile,
   } = useAppStore();
@@ -40,6 +41,8 @@ export const AuthWorkspacePage: React.FC<{ manageMode?: boolean }> = ({ manageMo
 
   const [workspaceTab, setWorkspaceTab] = useState<'create' | 'join'>('create');
   const [workspaceName, setWorkspaceName] = useState('');
+  const [editWorkspaceName, setEditWorkspaceName] = useState('');
+  const [isEditingWorkspaceName, setIsEditingWorkspaceName] = useState(false);
   const [defaultCurrency, setDefaultCurrency] = useState<CurrencyCode>('EUR');
   const [inviteCodeInput, setInviteCodeInput] = useState('');
   const [copiedCode, setCopiedCode] = useState(false);
@@ -301,10 +304,60 @@ export const AuthWorkspacePage: React.FC<{ manageMode?: boolean }> = ({ manageMo
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex-1 min-w-0">
           <h1 className="text-2xl font-bold text-navy">{t.nav.settings}</h1>
-          <p className="text-sm text-navy/65">{currentCouple.name}</p>
+          {isEditingWorkspaceName ? (
+            <form
+              onSubmit={async (e) => {
+                e.preventDefault();
+                if (!editWorkspaceName.trim()) return;
+                try {
+                  await updateCoupleWorkspace(editWorkspaceName.trim());
+                  setIsEditingWorkspaceName(false);
+                  notify(
+                    lang === 'he' ? 'שם סביבת העבודה עודכן!' : 'Workspace name updated!',
+                    'success'
+                  );
+                } catch (err) {
+                  handleError(err);
+                }
+              }}
+              className="flex items-center gap-2 mt-2 max-w-md"
+            >
+              <Input
+                value={editWorkspaceName}
+                onChange={(e) => setEditWorkspaceName(e.target.value)}
+                required
+                autoFocus
+              />
+              <Button type="submit" size="sm">
+                {t.common.save}
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => setIsEditingWorkspaceName(false)}
+              >
+                {t.common.cancel}
+              </Button>
+            </form>
+          ) : (
+            <div className="flex items-center gap-2 mt-1">
+              <p className="text-sm font-semibold text-navy/75">{currentCouple.name}</p>
+              <button
+                type="button"
+                onClick={() => {
+                  setEditWorkspaceName(currentCouple.name);
+                  setIsEditingWorkspaceName(true);
+                }}
+                className="text-xs font-bold text-sand hover:underline px-2 py-0.5 rounded-lg bg-sand/15"
+              >
+                {lang === 'he' ? 'שינוי שם' : 'Rename'}
+              </button>
+            </div>
+          )}
         </div>
         <Button variant="outline" size="sm" onClick={signOut}>
           <LogOut className="w-4 h-4" />

@@ -39,12 +39,14 @@ interface AppStoreContextValue {
   signUp: (email: string, password: string, fullName: string) => Promise<void>;
   signOut: () => Promise<void>;
   createCoupleWorkspace: (name: string, defaultCurrency: CurrencyCode) => Promise<void>;
+  updateCoupleWorkspace: (name: string) => Promise<void>;
   joinCoupleWorkspace: (inviteCode: string) => Promise<void>;
   addPartnerProfile: (partnerName: string, partnerEmail?: string) => Promise<void>;
 
   // Trips CRUD
   createTrip: (input: Omit<Trip, 'id' | 'couple_id' | 'created_by' | 'created_at' | 'updated_at'>) => Promise<Trip>;
   updateTrip: (tripId: string, patch: Partial<Trip>) => Promise<void>;
+  uploadTripCover: (tripId: string, file: File) => Promise<void>;
   duplicateTrip: (tripId: string) => Promise<Trip>;
   deleteTrip: (tripId: string) => Promise<void>;
 
@@ -300,6 +302,14 @@ export const AppStoreProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     await fetchWorkspace(true);
   };
 
+  const updateCoupleWorkspace = async (name: string) => {
+    await apiRequest('/api/couples', {
+      method: 'PATCH',
+      body: JSON.stringify({ name }),
+    });
+    await fetchWorkspace(true);
+  };
+
   const joinCoupleWorkspace = async (inviteCode: string) => {
     await apiRequest('/api/couples/join', {
       method: 'POST',
@@ -335,6 +345,17 @@ export const AppStoreProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     await apiRequest(`/api/trips/${tripId}`, {
       method: 'PATCH',
       body: JSON.stringify(patch),
+    });
+    await fetchWorkspace(true);
+  };
+
+  const uploadTripCover = async (tripId: string, file: File) => {
+    validateUploadFile(file);
+    const form = new FormData();
+    form.append('image', file);
+    await apiRequest(`/api/trips/${tripId}/cover`, {
+      method: 'POST',
+      body: form,
     });
     await fetchWorkspace(true);
   };
@@ -830,10 +851,12 @@ export const AppStoreProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         signUp,
         signOut,
         createCoupleWorkspace,
+        updateCoupleWorkspace,
         joinCoupleWorkspace,
         addPartnerProfile,
         createTrip,
         updateTrip,
+        uploadTripCover,
         duplicateTrip,
         deleteTrip,
         activeDays,

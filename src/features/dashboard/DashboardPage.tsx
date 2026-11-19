@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useI18n } from '@/app/providers/I18nProvider';
 import { useAppStore } from '@/app/providers/AppStoreProvider';
@@ -13,15 +13,25 @@ import {
   ArrowUpRight,
   CalendarRange,
   CheckCircle2,
-  Clock,
   Compass,
   FolderLock,
   ListChecks,
   MapPin,
+  Plane,
   Plus,
   Sparkles,
   Wallet,
 } from 'lucide-react';
+
+function getDetailedCountdown(startDateStr: string) {
+  const [y, m, d] = startDateStr.split('-').map(Number);
+  const target = new Date(y, m - 1, d, 0, 0, 0).getTime();
+  const diff = Math.max(0, target - Date.now());
+  const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+  const hours = Math.floor((diff / (1000 * 60 * 60)) % 24);
+  const minutes = Math.floor((diff / (1000 * 60)) % 60);
+  return { days, hours, minutes, totalMs: target - Date.now() };
+}
 
 export const DashboardPage: React.FC = () => {
   const { lang, t } = useI18n();
@@ -36,6 +46,12 @@ export const DashboardPage: React.FC = () => {
     activePackingItems,
   } = useAppStore();
   const navigate = useNavigate();
+
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const id = window.setInterval(() => setTick((x) => x + 1), 60000);
+    return () => window.clearInterval(id);
+  }, []);
 
   if (!activeTrip) {
     return (
@@ -77,6 +93,7 @@ export const DashboardPage: React.FC = () => {
 
   const daysUntilStart = getCountdownDays(activeTrip.start_date);
   const daysUntilEnd = getCountdownDays(activeTrip.end_date);
+  const countdown = getDetailedCountdown(activeTrip.start_date);
 
   const pendingTasks = activeTasks.filter((tk) => tk.status !== 'Completed').slice(0, 5);
   const upcomingEvents = activeEvents
@@ -85,83 +102,128 @@ export const DashboardPage: React.FC = () => {
 
   return (
     <div className="space-y-5">
-      {/* Hero Upcoming Trip Card with Countdown */}
-      <div
-        className="rounded-3xl p-5 sm:p-6 text-white shadow-soft relative overflow-hidden bg-cover bg-center"
-        style={
-          activeTrip.cover_image
-            ? {
-                backgroundImage: `linear-gradient(135deg, rgba(23,43,58,0.92) 0%, rgba(23,43,58,0.65) 100%), url(${activeTrip.cover_image})`,
-              }
-            : {
-                backgroundImage:
-                  'linear-gradient(135deg, #172B3A 0%, #243F54 65%, #C49B70 100%)',
-              }
-        }
-      >
-        <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
-          <Badge variant="sand" className="bg-sand text-white border-0">
-            {t.trips.statuses[activeTrip.status]}
-          </Badge>
-          <div className="flex items-center gap-1.5 text-xs bg-white/15 backdrop-blur-xs px-3 py-1 rounded-full">
-            <Clock className="w-3.5 h-3.5 text-sand" />
-            {daysUntilStart > 0 ? (
-              <span className="font-bold">
-                {daysUntilStart} {t.dashboard.daysLeft}
-              </span>
-            ) : daysUntilEnd >= 0 ? (
-              <span className="font-bold text-sage">{t.dashboard.tripActiveNow}</span>
-            ) : (
-              <span>{t.dashboard.tripCompleted}</span>
-            )}
-          </div>
-        </div>
-
-        <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">{activeTrip.name}</h1>
-        <div className="flex flex-wrap items-center gap-4 text-xs sm:text-sm text-ivory/85 mt-2">
-          <span className="flex items-center gap-1.5">
-            <MapPin className="w-4 h-4 text-sand" />
-            {activeTrip.destination} ({activeTrip.country})
-          </span>
-          <span className="flex items-center gap-1.5">
-            <CalendarRange className="w-4 h-4 text-sage" />
-            {formatDate(activeTrip.start_date, lang)} – {formatDate(activeTrip.end_date, lang)}
-          </span>
-        </div>
-
-        {activeTrip.destinations && activeTrip.destinations.length > 1 && (
-          <div className="flex flex-wrap items-center gap-1.5 mt-3">
-            {activeTrip.destinations.map((stop, idx) => (
-              <React.Fragment key={stop.id || idx}>
-                <span className="px-2.5 py-0.5 rounded-full bg-white/15 text-ivory text-xs font-medium">
-                  {stop.city}, {stop.country}
-                </span>
-                {idx < activeTrip.destinations!.length - 1 && (
-                  <span className="text-sand text-xs font-bold">
-                    {lang === 'he' ? '←' : '→'}
-                  </span>
-                )}
-              </React.Fragment>
-            ))}
-          </div>
+      {/* Hero Upcoming Trip Card with Prominent Countdown */}
+      <div className="rounded-3xl p-5 sm:p-7 text-white shadow-soft relative overflow-hidden bg-gradient-to-br from-navy via-navy-light to-sand-dark">
+        {activeTrip.cover_image && (
+          <>
+            <img
+              src={activeTrip.cover_image}
+              alt={activeTrip.name}
+              className="absolute inset-0 w-full h-full object-cover opacity-45"
+              onError={(e) => {
+                (e.currentTarget as HTMLImageElement).style.display = 'none';
+              }}
+            />
+            <div className="absolute inset-0 bg-gradient-to-t from-navy/95 via-navy/75 to-navy/50" />
+          </>
         )}
 
-        {/* Preparation Progress Bar */}
-        <div className="mt-5 pt-4 border-t border-white/15">
-          <div className="flex items-center justify-between text-xs mb-1.5">
-            <span className="text-ivory/85 font-medium">{t.dashboard.prepProgress}</span>
-            <span className="font-bold text-sand">{prepProgressPercent}%</span>
+        <div className="relative z-10 space-y-5">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <Badge variant="sand" className="bg-sand text-white border-0 shadow-sm">
+              {t.trips.statuses[activeTrip.status]}
+            </Badge>
+            <span className="text-xs font-medium text-ivory/85 flex items-center gap-1.5 bg-white/10 px-3 py-1 rounded-full backdrop-blur-xs">
+              <CalendarRange className="w-3.5 h-3.5 text-sand" />
+              {formatDate(activeTrip.start_date, lang)} – {formatDate(activeTrip.end_date, lang)}
+            </span>
           </div>
-          <div className="w-full h-2 rounded-full bg-white/15 overflow-hidden">
-            <div
-              className="h-full bg-sage transition-all duration-500 rounded-full"
-              style={{ width: `${prepProgressPercent}%` }}
-            />
+
+          <div className="flex flex-col md:flex-row md:items-end justify-between gap-5">
+            <div className="space-y-2">
+              <h1 className="text-2xl sm:text-4xl font-extrabold tracking-tight leading-tight">
+                {activeTrip.name}
+              </h1>
+              <div className="flex flex-wrap items-center gap-2 text-xs sm:text-sm text-ivory/90">
+                <MapPin className="w-4 h-4 text-sand shrink-0" />
+                <span>
+                  {activeTrip.destination} ({activeTrip.country})
+                </span>
+              </div>
+
+              {activeTrip.destinations && activeTrip.destinations.length > 1 && (
+                <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                  {activeTrip.destinations.map((stop, idx) => (
+                    <React.Fragment key={stop.id || idx}>
+                      <span className="px-2.5 py-0.5 rounded-full bg-white/15 text-ivory text-xs font-medium">
+                        {stop.city}, {stop.country}
+                      </span>
+                      {idx < activeTrip.destinations!.length - 1 && (
+                        <span className="text-sand text-xs font-bold">
+                          {lang === 'he' ? '←' : '→'}
+                        </span>
+                      )}
+                    </React.Fragment>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Prominent Visual Countdown Block */}
+            {daysUntilStart > 0 ? (
+              <div className="bg-white/12 backdrop-blur-md border border-white/20 rounded-2xl p-3.5 sm:p-4 shrink-0 shadow-lg">
+                <div className="flex items-center justify-center gap-1.5 text-[11px] font-bold text-sand uppercase tracking-wider mb-2">
+                  <Plane className="w-3.5 h-3.5" />
+                  <span>{lang === 'he' ? 'ספירה לאחור להמראה' : 'Countdown to Takeoff'}</span>
+                </div>
+                <div className="grid grid-cols-3 gap-2 text-center" dir="ltr">
+                  <div className="bg-navy/70 rounded-xl px-3 py-2 min-w-[64px]">
+                    <div className="text-2xl sm:text-3xl font-black text-white leading-none">
+                      {countdown.days}
+                    </div>
+                    <div className="text-[10px] text-ivory/75 mt-1 font-medium">
+                      {lang === 'he' ? 'ימים' : 'Days'}
+                    </div>
+                  </div>
+                  <div className="bg-navy/70 rounded-xl px-3 py-2 min-w-[64px]">
+                    <div className="text-2xl sm:text-3xl font-black text-sand leading-none">
+                      {String(countdown.hours).padStart(2, '0')}
+                    </div>
+                    <div className="text-[10px] text-ivory/75 mt-1 font-medium">
+                      {lang === 'he' ? 'שעות' : 'Hours'}
+                    </div>
+                  </div>
+                  <div className="bg-navy/70 rounded-xl px-3 py-2 min-w-[64px]">
+                    <div className="text-2xl sm:text-3xl font-black text-sage leading-none">
+                      {String(countdown.minutes).padStart(2, '0')}
+                    </div>
+                    <div className="text-[10px] text-ivory/75 mt-1 font-medium">
+                      {lang === 'he' ? 'דקות' : 'Mins'}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : daysUntilEnd >= 0 ? (
+              <div className="bg-sage/25 border border-sage/50 backdrop-blur-md rounded-2xl px-5 py-3 text-center shrink-0">
+                <div className="text-base font-extrabold text-white flex items-center gap-2">
+                  <Plane className="w-5 h-5 text-sand" />
+                  <span>{t.dashboard.tripActiveNow}</span>
+                </div>
+              </div>
+            ) : (
+              <div className="bg-white/15 backdrop-blur-md rounded-2xl px-4 py-2.5 text-xs font-bold text-ivory shrink-0">
+                {t.dashboard.tripCompleted}
+              </div>
+            )}
+          </div>
+
+          {/* Preparation Progress Bar */}
+          <div className="pt-4 border-t border-white/15">
+            <div className="flex items-center justify-between text-xs mb-1.5">
+              <span className="text-ivory/85 font-medium">{t.dashboard.prepProgress}</span>
+              <span className="font-bold text-sand">{prepProgressPercent}%</span>
+            </div>
+            <div className="w-full h-2.5 rounded-full bg-white/15 overflow-hidden">
+              <div
+                className="h-full bg-gradient-to-r from-sand to-sage transition-all duration-500 rounded-full"
+                style={{ width: `${prepProgressPercent}%` }}
+              />
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Quick Actions Strip - Opens Creation Drawer Directly */}
+      {/* Quick Actions Strip */}
       <div className="space-y-2">
         <h2 className="text-xs font-bold uppercase tracking-wider text-navy/60 px-1">
           {t.dashboard.quickActions}
@@ -219,7 +281,7 @@ export const DashboardPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Budget Overview Cards (Planned, Actual, Remaining) */}
+      {/* Budget Overview Cards */}
       <div className="grid grid-cols-3 gap-2.5 sm:gap-4">
         <Card className="p-3.5 sm:p-4">
           <div className="text-[11px] text-navy/60 font-medium">{t.dashboard.plannedBudget}</div>
@@ -246,7 +308,7 @@ export const DashboardPage: React.FC = () => {
         </Card>
       </div>
 
-      {/* Two Column Widgets: Upcoming Activities & Pending Tasks */}
+      {/* Two Column Widgets */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <Card className="space-y-3">
           <div className="flex items-center justify-between">
@@ -265,9 +327,7 @@ export const DashboardPage: React.FC = () => {
 
           {upcomingEvents.length === 0 ? (
             <div className="py-6 text-center text-xs text-navy/55">
-              {lang === 'he'
-                ? 'אין פעילויות משובצות עדיין במסלול'
-                : 'No activities scheduled yet'}
+              {lang === 'he' ? 'אין פעילויות משובצות עדיין במסלול' : 'No activities scheduled yet'}
             </div>
           ) : (
             <div className="space-y-2">
@@ -311,9 +371,7 @@ export const DashboardPage: React.FC = () => {
           {pendingTasks.length === 0 ? (
             <div className="py-6 text-center text-xs text-navy/55 flex flex-col items-center gap-1.5">
               <CheckCircle2 className="w-5 h-5 text-sage" />
-              <span>
-                {lang === 'he' ? 'כל המשימות הושלמו!' : 'All tasks are completed!'}
-              </span>
+              <span>{lang === 'he' ? 'כל המשימות הושלמו!' : 'All tasks are completed!'}</span>
             </div>
           ) : (
             <div className="space-y-2">
@@ -332,11 +390,7 @@ export const DashboardPage: React.FC = () => {
                   </div>
                   <Badge
                     variant={
-                      tk.priority === 'High'
-                        ? 'danger'
-                        : tk.priority === 'Medium'
-                          ? 'sand'
-                          : 'ivory'
+                      tk.priority === 'High' ? 'danger' : tk.priority === 'Medium' ? 'sand' : 'ivory'
                     }
                   >
                     {t.tasks.priorities[tk.priority]}
@@ -348,7 +402,7 @@ export const DashboardPage: React.FC = () => {
         </Card>
       </div>
 
-      {/* Recent / All Couple Trips Strip */}
+      {/* Recent Trips Strip */}
       {trips.length > 1 && (
         <Card className="space-y-3">
           <div className="flex items-center justify-between">

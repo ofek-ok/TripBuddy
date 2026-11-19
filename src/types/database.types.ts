@@ -144,6 +144,8 @@ export interface ItineraryEvent {
   estimated_cost: number | null;
   currency: CurrencyCode | null;
   booking_url: string | null;
+  flight_number?: string | null;
+  confirmation_code?: string | null;
   notes: string | null;
   status: EventStatus;
   sort_order: number;
@@ -190,6 +192,11 @@ export interface Expense {
   expense_date: string;
   payment_method: PaymentMethod;
   receipt_document_id: string | null;
+  tax_free_document_id?: string | null;
+  is_tax_free?: boolean;
+  tax_free_country?: string | null;
+  tax_free_refund_amount?: number;
+  source_event_id?: string | null;
   notes: string | null;
   created_at: string;
   updated_at: string;

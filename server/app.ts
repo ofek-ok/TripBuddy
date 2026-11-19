@@ -382,6 +382,33 @@ app.post('/api/couples', requireAuth, async (req: AuthenticatedRequest, res) => 
   }
 });
 
+app.patch('/api/couples', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const coupleId = await getUserCoupleId(req.userId!);
+    if (!coupleId) {
+      res.status(404).json({ error: 'Workspace not found' });
+      return;
+    }
+    const { name, default_currency } = req.body as { name?: string; default_currency?: string };
+    if (name !== undefined && !name.trim()) {
+      res.status(400).json({ error: 'Workspace name cannot be empty' });
+      return;
+    }
+    const [updated] = await query(
+      `UPDATE couples SET
+        name = COALESCE($1, name),
+        default_currency = COALESCE($2, default_currency),
+        updated_at = now()
+      WHERE id = $3 RETURNING *`,
+      [name?.trim() || null, default_currency?.trim() || null, coupleId]
+    );
+    broadcastCoupleUpdate(coupleId, 'couple_updated');
+    res.json(updated);
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
 app.post('/api/couples/join', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const userId = req.userId!;
@@ -588,6 +615,59 @@ app.patch('/api/trips/:id', requireAuth, async (req: AuthenticatedRequest, res) 
   }
 });
 
+app.post('/api/trips/:id/cover', requireAuth, upload.single('image'), async (req: AuthenticatedRequest, res) => {
+  try {
+    const file = req.file;
+    if (!file) {
+      res.status(400).json({ error: 'Image file is required' });
+      return;
+    }
+    const coupleId = await assertTripAccess(req.userId!, req.params.id);
+    const filePath = `${coupleId}/${req.params.id}/cover`;
+    await query(
+      `INSERT INTO private_file_blobs (file_path, bucket, couple_id, trip_id, mime_type, file_size, data)
+       VALUES ($1, 'trip-covers', $2, $3, $4, $5, $6)
+       ON CONFLICT (file_path) DO UPDATE SET
+         mime_type = EXCLUDED.mime_type,
+         file_size = EXCLUDED.file_size,
+         data = EXCLUDED.data,
+         created_at = now()`,
+      [filePath, coupleId, req.params.id, file.mimetype, file.size, file.buffer]
+    );
+
+    const coverUrl = `/api/trips/${req.params.id}/cover?v=${Date.now()}`;
+    const [updated] = await query(
+      'UPDATE trips SET cover_image = $1, updated_at = now() WHERE id = $2 RETURNING *',
+      [coverUrl, req.params.id]
+    );
+    broadcastCoupleUpdate(coupleId, 'trip_cover_updated');
+    res.json(updated);
+  } catch (err) {
+    const code = (err as { statusCode?: number }).statusCode || 500;
+    res.status(code).json({ error: (err as Error).message });
+  }
+});
+
+app.get('/api/trips/:id/cover', async (req, res) => {
+  try {
+    const [blob] = await query<{ mime_type: string; data: Buffer }>(
+      `SELECT mime_type, data FROM private_file_blobs
+       WHERE trip_id = $1 AND bucket = 'trip-covers'
+       ORDER BY created_at DESC LIMIT 1`,
+      [req.params.id]
+    );
+    if (!blob) {
+      res.status(404).send('Cover image not found');
+      return;
+    }
+    res.setHeader('Content-Type', blob.mime_type);
+    res.setHeader('Cache-Control', 'public, max-age=3600');
+    res.send(blob.data);
+  } catch (err) {
+    res.status(500).send((err as Error).message);
+  }
+});
+
 app.delete('/api/trips/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const coupleId = await assertTripAccess(req.userId!, req.params.id);
@@ -636,23 +716,112 @@ app.patch('/api/days/:id', requireAuth, async (req: AuthenticatedRequest, res) =
   }
 });
 
+const EVENT_TO_BUDGET_CAT: Record<string, string> = {
+  Flight: 'Flights',
+  Hotel: 'Accommodation',
+  Restaurant: 'Food',
+  Attraction: 'Attractions',
+  Transportation: 'Transportation',
+  Shopping: 'Shopping',
+  Activity: 'Attractions',
+  Other: 'Other',
+};
+
+async function syncBookedEventToExpense(
+  ev: {
+    id: string;
+    trip_id: string;
+    day_id: string;
+    title: string;
+    category: string;
+    estimated_cost: number | null;
+    currency: string | null;
+    status: string;
+    notes: string | null;
+  },
+  userId: string
+) {
+  if (ev.status !== 'Booked' || !ev.estimated_cost || Number(ev.estimated_cost) <= 0) {
+    return;
+  }
+  const budgetCatName = EVENT_TO_BUDGET_CAT[ev.category] || 'Other';
+  const [cat] = await query<{ id: string }>(
+    'SELECT id FROM budget_categories WHERE trip_id = $1 AND name = $2 LIMIT 1',
+    [ev.trip_id, budgetCatName]
+  );
+  if (!cat) return;
+
+  const [trip] = await query<{ currency: string }>(
+    'SELECT currency FROM trips WHERE id = $1',
+    [ev.trip_id]
+  );
+  const [day] = await query<{ date: string }>(
+    'SELECT date FROM itinerary_days WHERE id = $1',
+    [ev.day_id]
+  );
+  const expCurrency = (ev.currency || trip?.currency || 'EUR').trim();
+  const expDate = day?.date || new Date().toISOString().split('T')[0];
+
+  await query(
+    `INSERT INTO expenses (
+      trip_id, category_id, title, amount, currency, base_amount,
+      exchange_rate, exchange_rate_date, paid_by, expense_date,
+      payment_method, notes, source_event_id
+    ) VALUES ($1,$2,$3,$4,$5,$6,1,$7,$8,$9,'Credit Card',$10,$11)
+    ON CONFLICT (source_event_id) DO UPDATE SET
+      category_id = EXCLUDED.category_id,
+      title = EXCLUDED.title,
+      amount = EXCLUDED.amount,
+      currency = EXCLUDED.currency,
+      base_amount = EXCLUDED.base_amount,
+      expense_date = EXCLUDED.expense_date,
+      updated_at = now()`,
+    [
+      ev.trip_id,
+      cat.id,
+      ev.title,
+      Number(ev.estimated_cost),
+      expCurrency,
+      Number(ev.estimated_cost),
+      expDate,
+      userId,
+      expDate,
+      ev.notes || null,
+      ev.id,
+    ]
+  );
+}
+
 app.post('/api/events', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const b = req.body;
     const coupleId = await assertTripAccess(req.userId!, b.trip_id);
-    const [event] = await query(
+    const [event] = await query<{
+      id: string;
+      trip_id: string;
+      day_id: string;
+      title: string;
+      category: string;
+      estimated_cost: number | null;
+      currency: string | null;
+      status: string;
+      notes: string | null;
+    }>(
       `INSERT INTO itinerary_events (
         day_id, trip_id, title, category, start_time, end_time, address,
-        latitude, longitude, estimated_cost, currency, booking_url, notes, status, sort_order, source_place_id
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING *`,
+        latitude, longitude, estimated_cost, currency, booking_url,
+        flight_number, confirmation_code, notes, status, sort_order, source_place_id
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18) RETURNING *`,
       [
         b.day_id, b.trip_id, b.title, b.category || 'Activity',
         b.start_time || null, b.end_time || null, b.address || null,
         b.latitude ?? null, b.longitude ?? null, b.estimated_cost ?? null,
-        b.currency || null, b.booking_url || null, b.notes || null,
-        b.status || 'Planned', b.sort_order ?? 1, b.source_place_id || null,
+        b.currency || null, b.booking_url || null,
+        b.flight_number || null, b.confirmation_code || null,
+        b.notes || null, b.status || 'Planned', b.sort_order ?? 1, b.source_place_id || null,
       ]
     );
+    await syncBookedEventToExpense(event, req.userId!);
     broadcastCoupleUpdate(coupleId, 'event_created');
     res.status(201).json(event);
   } catch (err) {
@@ -666,7 +835,17 @@ app.patch('/api/events/:id', requireAuth, async (req: AuthenticatedRequest, res)
     if (!existing) { res.status(404).json({ error: 'Event not found' }); return; }
     const coupleId = await assertTripAccess(req.userId!, existing.trip_id);
     const b = req.body;
-    const [updated] = await query(
+    const [updated] = await query<{
+      id: string;
+      trip_id: string;
+      day_id: string;
+      title: string;
+      category: string;
+      estimated_cost: number | null;
+      currency: string | null;
+      status: string;
+      notes: string | null;
+    }>(
       `UPDATE itinerary_events SET
         day_id = COALESCE($1, day_id),
         title = COALESCE($2, title),
@@ -677,18 +856,22 @@ app.patch('/api/events/:id', requireAuth, async (req: AuthenticatedRequest, res)
         estimated_cost = COALESCE($7, estimated_cost),
         currency = COALESCE($8, currency),
         booking_url = COALESCE($9, booking_url),
-        notes = COALESCE($10, notes),
-        status = COALESCE($11, status),
-        sort_order = COALESCE($12, sort_order),
+        flight_number = COALESCE($10, flight_number),
+        confirmation_code = COALESCE($11, confirmation_code),
+        notes = COALESCE($12, notes),
+        status = COALESCE($13, status),
+        sort_order = COALESCE($14, sort_order),
         updated_at = now()
-      WHERE id = $13 RETURNING *`,
+      WHERE id = $15 RETURNING *`,
       [
         b.day_id ?? null, b.title ?? null, b.category ?? null,
         b.start_time ?? null, b.end_time ?? null, b.address ?? null,
         b.estimated_cost ?? null, b.currency ?? null, b.booking_url ?? null,
+        b.flight_number ?? null, b.confirmation_code ?? null,
         b.notes ?? null, b.status ?? null, b.sort_order ?? null, req.params.id,
       ]
     );
+    await syncBookedEventToExpense(updated, req.userId!);
     broadcastCoupleUpdate(coupleId, 'event_updated');
     res.json(updated);
   } catch (err) {
@@ -736,13 +919,16 @@ app.post('/api/expenses', requireAuth, async (req: AuthenticatedRequest, res) =>
       `INSERT INTO expenses (
         trip_id, category_id, title, amount, currency, base_amount,
         exchange_rate, exchange_rate_date, paid_by, expense_date,
-        payment_method, receipt_document_id, notes
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *`,
+        payment_method, receipt_document_id, tax_free_document_id,
+        is_tax_free, tax_free_country, tax_free_refund_amount, notes
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17) RETURNING *`,
       [
         b.trip_id, b.category_id, b.title, b.amount, b.currency, b.base_amount,
         b.exchange_rate || 1, b.exchange_rate_date, b.paid_by || null,
         b.expense_date, b.payment_method || 'Credit Card',
-        b.receipt_document_id || null, b.notes || null,
+        b.receipt_document_id || null, b.tax_free_document_id || null,
+        Boolean(b.is_tax_free), b.tax_free_country || null,
+        Number(b.tax_free_refund_amount || 0), b.notes || null,
       ]
     );
     broadcastCoupleUpdate(coupleId, 'expense_created');
@@ -771,14 +957,23 @@ app.patch('/api/expenses/:id', requireAuth, async (req: AuthenticatedRequest, re
         expense_date = COALESCE($9, expense_date),
         payment_method = COALESCE($10, payment_method),
         receipt_document_id = $11,
-        notes = $12,
+        tax_free_document_id = $12,
+        is_tax_free = COALESCE($13, is_tax_free),
+        tax_free_country = $14,
+        tax_free_refund_amount = COALESCE($15, tax_free_refund_amount),
+        notes = $16,
         updated_at = now()
-      WHERE id = $13 RETURNING *`,
+      WHERE id = $17 RETURNING *`,
       [
         b.category_id ?? null, b.title ?? null, b.amount ?? null,
         b.currency ?? null, b.base_amount ?? null, b.exchange_rate ?? null,
         b.exchange_rate_date ?? null, b.paid_by ?? null, b.expense_date ?? null,
-        b.payment_method ?? null, b.receipt_document_id ?? null, b.notes ?? null, req.params.id,
+        b.payment_method ?? null, b.receipt_document_id ?? null,
+        b.tax_free_document_id ?? null,
+        b.is_tax_free !== undefined ? Boolean(b.is_tax_free) : null,
+        b.tax_free_country ?? null,
+        b.tax_free_refund_amount !== undefined ? Number(b.tax_free_refund_amount) : null,
+        b.notes ?? null, req.params.id,
       ]
     );
     broadcastCoupleUpdate(coupleId, 'expense_updated');

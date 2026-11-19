@@ -32,6 +32,7 @@ import {
   CheckCircle2,
   Copy,
   Edit3,
+  ImagePlus,
   MapPin,
   Plus,
   Route,
@@ -56,6 +57,13 @@ const TIMEZONES = [
   'UTC',
 ];
 
+function clampDate(dateVal: string | null | undefined, minDate: string, maxDate: string): string {
+  if (!dateVal) return minDate;
+  if (dateVal < minDate) return minDate;
+  if (dateVal > maxDate) return maxDate;
+  return dateVal;
+}
+
 export const TripsPage: React.FC = () => {
   const { lang, t } = useI18n();
   const {
@@ -64,6 +72,7 @@ export const TripsPage: React.FC = () => {
     setActiveTripId,
     createTrip,
     updateTrip,
+    uploadTripCover,
     duplicateTrip,
     deleteTrip,
   } = useAppStore();
@@ -87,7 +96,10 @@ export const TripsPage: React.FC = () => {
   const [plannedBudget, setPlannedBudget] = useState('12000');
   const [status, setStatus] = useState<TripStatus>('Upcoming');
   const [coverImage, setCoverImage] = useState('');
+  const [coverFile, setCoverFile] = useState<File | null>(null);
+  const [coverPreviewUrl, setCoverPreviewUrl] = useState<string | null>(null);
   const [description, setDescription] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
 
   const openCreateModal = () => {
     const today = new Date().toISOString().split('T')[0];
@@ -109,6 +121,8 @@ export const TripsPage: React.FC = () => {
     setPlannedBudget('10000');
     setStatus('Upcoming');
     setCoverImage('');
+    setCoverFile(null);
+    setCoverPreviewUrl(null);
     setDescription('');
     setDrawerOpen(true);
   };
@@ -120,6 +134,31 @@ export const TripsPage: React.FC = () => {
     }
   }, [searchParams, setSearchParams]);
 
+  // Automatically clamp all stop dates whenever overall trip startDate / endDate changes
+  const handleStartDateChange = (nextStart: string) => {
+    setStartDate(nextStart);
+    const effectiveEnd = endDate < nextStart ? nextStart : endDate;
+    if (endDate < nextStart) setEndDate(nextStart);
+    setStops((prev) =>
+      prev.map((s) => ({
+        ...s,
+        start_date: clampDate(s.start_date, nextStart, effectiveEnd),
+        end_date: clampDate(s.end_date, nextStart, effectiveEnd),
+      }))
+    );
+  };
+
+  const handleEndDateChange = (nextEnd: string) => {
+    setEndDate(nextEnd);
+    setStops((prev) =>
+      prev.map((s) => ({
+        ...s,
+        start_date: clampDate(s.start_date, startDate, nextEnd),
+        end_date: clampDate(s.end_date, startDate, nextEnd),
+      }))
+    );
+  };
+
   const openEditModal = (trip: Trip) => {
     setEditingTrip(trip);
     setName(trip.name);
@@ -127,7 +166,13 @@ export const TripsPage: React.FC = () => {
     setEndDate(trip.end_date);
 
     if (trip.destinations && trip.destinations.length > 0) {
-      setStops(trip.destinations);
+      setStops(
+        trip.destinations.map((s) => ({
+          ...s,
+          start_date: clampDate(s.start_date, trip.start_date, trip.end_date),
+          end_date: clampDate(s.end_date, trip.start_date, trip.end_date),
+        }))
+      );
     } else {
       setStops([
         {
@@ -145,19 +190,22 @@ export const TripsPage: React.FC = () => {
     setPlannedBudget(String(trip.planned_budget));
     setStatus(trip.status);
     setCoverImage(trip.cover_image || '');
+    setCoverFile(null);
+    setCoverPreviewUrl(trip.cover_image || null);
     setDescription(trip.description || '');
     setDrawerOpen(true);
   };
 
   const handleAddStop = () => {
     const lastStop = stops[stops.length - 1];
+    const defaultStart = clampDate(lastStop?.end_date || startDate, startDate, endDate);
     setStops((prev) => [
       ...prev,
       {
         id: crypto.randomUUID(),
         city: '',
         country: '',
-        start_date: lastStop?.end_date || startDate,
+        start_date: defaultStart,
         end_date: endDate,
       },
     ]);
@@ -169,7 +217,18 @@ export const TripsPage: React.FC = () => {
     value: string
   ) => {
     setStops((prev) =>
-      prev.map((s) => (s.id === stopId ? { ...s, [field]: value } : s))
+      prev.map((s) => {
+        if (s.id !== stopId) return s;
+        if (field === 'start_date' || field === 'end_date') {
+          const clamped = clampDate(value, startDate, endDate);
+          const nextStop = { ...s, [field]: clamped };
+          if (nextStop.start_date && nextStop.end_date && nextStop.end_date < nextStop.start_date) {
+            nextStop.end_date = nextStop.start_date;
+          }
+          return nextStop;
+        }
+        return { ...s, [field]: value };
+      })
     );
   };
 
@@ -178,9 +237,21 @@ export const TripsPage: React.FC = () => {
     setStops((prev) => prev.filter((s) => s.id !== stopId));
   };
 
+  const handleCoverFileSelect = (file: File | null) => {
+    setCoverFile(file);
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = () => setCoverPreviewUrl(String(reader.result));
+      reader.readAsDataURL(file);
+    } else {
+      setCoverPreviewUrl(coverImage || null);
+    }
+  };
+
   const handleSaveTrip = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
+      setIsSaving(true);
       if (endDate < startDate) {
         throw new Error(
           lang === 'he'
@@ -190,13 +261,17 @@ export const TripsPage: React.FC = () => {
       }
 
       const cleanedStops = stops
-        .map((s) => ({
-          id: s.id || crypto.randomUUID(),
-          city: s.city.trim(),
-          country: s.country.trim(),
-          start_date: s.start_date || null,
-          end_date: s.end_date || null,
-        }))
+        .map((s) => {
+          const clampedStart = s.start_date ? clampDate(s.start_date, startDate, endDate) : null;
+          const clampedEnd = s.end_date ? clampDate(s.end_date, clampedStart || startDate, endDate) : null;
+          return {
+            id: s.id || crypto.randomUUID(),
+            city: s.city.trim(),
+            country: s.country.trim(),
+            start_date: clampedStart,
+            end_date: clampedEnd,
+          };
+        })
         .filter((s) => s.city || s.country);
 
       if (cleanedStops.length === 0) {
@@ -212,15 +287,11 @@ export const TripsPage: React.FC = () => {
         new Set(cleanedStops.map((s) => s.country).filter(Boolean))
       );
 
-      const summaryDestination = citiesList.join(' • ');
-      const summaryCountry = uniqueCountries.join(', ');
-      const summaryCity = citiesList.join(', ');
-
       const payload = {
         name: name.trim(),
-        destination: summaryDestination,
-        country: summaryCountry,
-        city: summaryCity || null,
+        destination: citiesList.join(' • '),
+        country: uniqueCountries.join(', '),
+        city: citiesList.join(', ') || null,
         destinations: cleanedStops,
         timezone,
         start_date: startDate,
@@ -232,16 +303,34 @@ export const TripsPage: React.FC = () => {
         status,
       };
 
+      let savedTripId: string;
       if (editingTrip) {
         await updateTrip(editingTrip.id, payload);
-        notify(lang === 'he' ? 'הטיול עודכן בהצלחה' : 'Trip updated', 'success');
+        savedTripId = editingTrip.id;
       } else {
-        await createTrip(payload);
-        notify(lang === 'he' ? 'הטיול נוצר בהצלחה!' : 'Trip created!', 'success');
+        const created = await createTrip(payload);
+        savedTripId = created.id;
       }
+
+      if (coverFile) {
+        await uploadTripCover(savedTripId, coverFile);
+      }
+
+      notify(
+        editingTrip
+          ? lang === 'he'
+            ? 'הטיול עודכן בהצלחה'
+            : 'Trip updated'
+          : lang === 'he'
+            ? 'הטיול נוצר בהצלחה!'
+            : 'Trip created!',
+        'success'
+      );
       setDrawerOpen(false);
     } catch (err) {
       handleError(err);
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -322,21 +411,22 @@ export const TripsPage: React.FC = () => {
                   isSelected ? 'ring-2 ring-sand border-sand' : ''
                 }`}
               >
-                {/* Cover Header */}
-                <div
-                  className="h-36 bg-navy relative flex items-end p-4 text-white bg-cover bg-center"
-                  style={
-                    trip.cover_image
-                      ? {
-                          backgroundImage: `linear-gradient(to top, rgba(23,43,58,0.88), rgba(23,43,58,0.2)), url(${trip.cover_image})`,
-                        }
-                      : {
-                          backgroundImage:
-                            'linear-gradient(135deg, #172B3A 0%, #243F54 60%, #C49B70 100%)',
-                        }
-                  }
-                >
-                  <div className="absolute top-3 inset-x-3 flex items-center justify-between">
+                {/* Cover Header with reliable <img> rendering */}
+                <div className="h-40 bg-gradient-to-br from-navy via-navy-light to-sand relative flex items-end p-4 text-white overflow-hidden">
+                  {trip.cover_image && (
+                    <>
+                      <img
+                        src={trip.cover_image}
+                        alt={trip.name}
+                        className="absolute inset-0 w-full h-full object-cover"
+                        onError={(e) => {
+                          (e.currentTarget as HTMLImageElement).style.display = 'none';
+                        }}
+                      />
+                      <div className="absolute inset-0 bg-gradient-to-t from-navy/90 via-navy/40 to-navy/15" />
+                    </>
+                  )}
+                  <div className="absolute top-3 inset-x-3 z-10 flex items-center justify-between">
                     <Badge variant={trip.status === 'Active' ? 'sand' : 'sage'}>
                       {t.trips.statuses[trip.status]}
                     </Badge>
@@ -346,9 +436,9 @@ export const TripsPage: React.FC = () => {
                       </Badge>
                     )}
                   </div>
-                  <div className="w-full">
-                    <h3 className="text-lg font-bold leading-tight">{trip.name}</h3>
-                    <div className="flex items-center gap-1.5 text-xs text-ivory/90 mt-1 truncate">
+                  <div className="w-full relative z-10">
+                    <h3 className="text-lg font-bold leading-tight drop-shadow-xs">{trip.name}</h3>
+                    <div className="flex items-center gap-1.5 text-xs text-ivory/95 mt-1 truncate">
                       <MapPin className="w-3.5 h-3.5 text-sand shrink-0" />
                       <span className="truncate">
                         {trip.destination} ({trip.country})
@@ -359,7 +449,6 @@ export const TripsPage: React.FC = () => {
 
                 {/* Body */}
                 <div className="p-4 space-y-3">
-                  {/* Multi-destination route chips if trip has multiple stops */}
                   {tripStops && tripStops.length > 0 && (
                     <div className="flex flex-wrap items-center gap-1.5">
                       {tripStops.map((stop, idx) => (
@@ -502,18 +591,19 @@ export const TripsPage: React.FC = () => {
               label={t.trips.startDate}
               required
               value={startDate}
-              onChange={(e) => setStartDate(e.target.value)}
+              onChange={(e) => handleStartDateChange(e.target.value)}
             />
             <Input
               type="date"
               label={t.trips.endDate}
               required
+              min={startDate}
               value={endDate}
-              onChange={(e) => setEndDate(e.target.value)}
+              onChange={(e) => handleEndDateChange(e.target.value)}
             />
           </div>
 
-          {/* Multi-Destination Stops Builder */}
+          {/* Multi-Destination Stops Builder (Date Pickers Restricted Strictly to Trip Range) */}
           <div className="space-y-2.5 p-3.5 rounded-2xl bg-ivory/80 border border-navy/10">
             <div className="flex items-center justify-between">
               <label className="text-xs font-bold text-navy flex items-center gap-1.5">
@@ -522,6 +612,11 @@ export const TripsPage: React.FC = () => {
               </label>
               <Badge variant="sand">{stops.length}</Badge>
             </div>
+            <p className="text-[11px] text-navy/60">
+              {lang === 'he'
+                ? `טווח תאריכי היעדים מוגבל אוטומטית לטווח החופשה (${formatShortDate(startDate, lang)} – ${formatShortDate(endDate, lang)})`
+                : `Stop dates are constrained to your trip range (${formatShortDate(startDate, lang)} – ${formatShortDate(endDate, lang)})`}
+            </p>
 
             <div className="space-y-3">
               {stops.map((stop, index) => (
@@ -538,7 +633,6 @@ export const TripsPage: React.FC = () => {
                         type="button"
                         onClick={() => handleRemoveStop(stop.id)}
                         className="text-red-600 hover:bg-red-50 p-1 rounded-lg transition-colors"
-                        title={t.common.delete}
                       >
                         <X className="w-3.5 h-3.5" />
                       </button>
@@ -550,9 +644,7 @@ export const TripsPage: React.FC = () => {
                       label={t.trips.destination}
                       required
                       value={stop.city}
-                      onChange={(e) =>
-                        handleUpdateStop(stop.id, 'city', e.target.value)
-                      }
+                      onChange={(e) => handleUpdateStop(stop.id, 'city', e.target.value)}
                       placeholder={
                         index === 0
                           ? lang === 'he'
@@ -567,9 +659,7 @@ export const TripsPage: React.FC = () => {
                       label={t.trips.country}
                       required
                       value={stop.country}
-                      onChange={(e) =>
-                        handleUpdateStop(stop.id, 'country', e.target.value)
-                      }
+                      onChange={(e) => handleUpdateStop(stop.id, 'country', e.target.value)}
                       placeholder={
                         index === 0
                           ? lang === 'he'
@@ -587,7 +677,9 @@ export const TripsPage: React.FC = () => {
                       <Input
                         type="date"
                         label={t.trips.stopStartDate}
-                        value={stop.start_date || ''}
+                        min={startDate}
+                        max={endDate}
+                        value={stop.start_date || startDate}
                         onChange={(e) =>
                           handleUpdateStop(stop.id, 'start_date', e.target.value)
                         }
@@ -595,7 +687,9 @@ export const TripsPage: React.FC = () => {
                       <Input
                         type="date"
                         label={t.trips.stopEndDate}
-                        value={stop.end_date || ''}
+                        min={stop.start_date || startDate}
+                        max={endDate}
+                        value={stop.end_date || endDate}
                         onChange={(e) =>
                           handleUpdateStop(stop.id, 'end_date', e.target.value)
                         }
@@ -666,13 +760,48 @@ export const TripsPage: React.FC = () => {
             </Select>
           </div>
 
-          <Input
-            label={t.trips.coverImage}
-            type="url"
-            value={coverImage}
-            onChange={(e) => setCoverImage(e.target.value)}
-            placeholder="https://images.unsplash.com/..."
-          />
+          {/* Cover Image Upload (Direct from Phone/PC + Optional URL) */}
+          <div className="space-y-2.5 p-3.5 rounded-2xl bg-ivory/70 border border-navy/10">
+            <label className="text-xs font-bold text-navy flex items-center gap-1.5">
+              <ImagePlus className="w-4 h-4 text-sand" />
+              <span>{lang === 'he' ? 'תמונת נושא לטיול (העלאה מהמכשיר או קישור)' : 'Trip Cover Image (Upload or URL)'}</span>
+            </label>
+            {coverPreviewUrl && (
+              <div className="relative h-28 rounded-xl overflow-hidden border border-navy/10">
+                <img
+                  src={coverPreviewUrl}
+                  alt="Cover Preview"
+                  className="w-full h-full object-cover"
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCoverFile(null);
+                    setCoverImage('');
+                    setCoverPreviewUrl(null);
+                  }}
+                  className="absolute top-2 end-2 bg-navy/80 text-white p-1 rounded-full"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
+            <input
+              type="file"
+              accept="image/*"
+              onChange={(e) => handleCoverFileSelect(e.target.files?.[0] || null)}
+              className="block w-full text-xs text-navy file:me-3 file:py-2 file:px-3.5 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-navy file:text-white hover:file:bg-navy-light"
+            />
+            <Input
+              type="url"
+              value={coverImage}
+              onChange={(e) => {
+                setCoverImage(e.target.value);
+                if (!coverFile) setCoverPreviewUrl(e.target.value || null);
+              }}
+              placeholder={lang === 'he' ? 'או הדביקו קישור ישיר לתמונה (אופציונלי)' : 'Or paste direct image URL (optional)'}
+            />
+          </div>
 
           <Textarea
             label={t.trips.description}
@@ -684,7 +813,9 @@ export const TripsPage: React.FC = () => {
             <Button type="button" variant="outline" onClick={() => setDrawerOpen(false)}>
               {t.common.cancel}
             </Button>
-            <Button type="submit">{t.common.save}</Button>
+            <Button type="submit" disabled={isSaving}>
+              {isSaving ? t.common.loading : t.common.save}
+            </Button>
           </div>
         </form>
       </ModalDrawer>

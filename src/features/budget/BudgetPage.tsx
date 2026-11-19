@@ -13,20 +13,33 @@ import {
   Textarea,
 } from '@/components/ui/primitives';
 import { CURRENCIES, formatCurrency, formatShortDate } from '@/lib/utils/formatters';
-import { CurrencyCode, Expense, PaymentMethod } from '@/types/database.types';
+import {
+  calculateTaxFreeRefund,
+  matchTaxFreeCountryFromTrip,
+  TAX_FREE_COUNTRIES,
+} from '@/lib/utils/taxFree';
+import { CurrencyCode, Expense, PaymentMethod, TripDocument } from '@/types/database.types';
 import {
   Bar,
   BarChart,
   CartesianGrid,
-  Cell,
-  Pie,
-  PieChart,
   ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis,
 } from 'recharts';
-import { Edit3, FileText, Plus, SlidersHorizontal, Trash2, Wallet } from 'lucide-react';
+import {
+  BadgePercent,
+  CalendarRange,
+  Camera,
+  Edit3,
+  Eye,
+  FileText,
+  Plus,
+  SlidersHorizontal,
+  Trash2,
+  Wallet,
+} from 'lucide-react';
 
 const PAYMENT_METHODS: PaymentMethod[] = [
   'Credit Card',
@@ -36,7 +49,7 @@ const PAYMENT_METHODS: PaymentMethod[] = [
   'Other',
 ];
 
-const CHART_COLORS = ['#172B3A', '#C49B70', '#A8B5A0', '#3E5C76', '#D8B998', '#7F9175', '#6B7280', '#9CA3AF'];
+const CHART_COLORS = ['#172B3A', '#C49B70', '#A8B5A0', '#3E5C76', '#D8B998', '#7F9175'];
 
 export const BudgetPage: React.FC = () => {
   const { lang, t } = useI18n();
@@ -47,10 +60,13 @@ export const BudgetPage: React.FC = () => {
     activeBudgetCategories,
     activeExpenses,
     activeDocuments,
+    updateTrip,
     updateCategoryAllocation,
     createExpense,
     updateExpense,
     deleteExpense,
+    uploadDocument,
+    getDocumentSignedUrl,
   } = useAppStore();
   const { notify, handleError } = useToast();
 
@@ -60,30 +76,14 @@ export const BudgetPage: React.FC = () => {
   const [dateFilter, setDateFilter] = useState<string>('');
 
   // Modals
+  const [editTotalBudgetOpen, setEditTotalBudgetOpen] = useState(false);
+  const [totalBudgetInput, setTotalBudgetInput] = useState('');
   const [allocationsOpen, setAllocationsOpen] = useState(false);
   const [expenseModalOpen, setExpenseModalOpen] = useState(false);
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
+  const [previewDocUrl, setPreviewDocUrl] = useState<string | null>(null);
+  const [previewDocTitle, setPreviewDocTitle] = useState<string>('');
   const [searchParams, setSearchParams] = useSearchParams();
-
-  useEffect(() => {
-    if (searchParams.get('action') === 'new' && activeTrip) {
-      setEditingExpense(null);
-      setTitle('');
-      setCategoryId(activeBudgetCategories[0]?.id || '');
-      setAmount('');
-      setCurrency(activeTrip.currency);
-      setExchangeRate('1');
-      const today = new Date().toISOString().split('T')[0];
-      setExchangeRateDate(today);
-      setExpenseDate(today);
-      setPaidBy(currentUser?.user_id || coupleMembers[0]?.user_id || '');
-      setPaymentMethod('Credit Card');
-      setReceiptDocId('');
-      setNotes('');
-      setExpenseModalOpen(true);
-      setSearchParams({}, { replace: true });
-    }
-  }, [searchParams, setSearchParams, activeTrip, activeBudgetCategories, currentUser, coupleMembers]);
 
   // Expense form state
   const [title, setTitle] = useState('');
@@ -100,93 +100,23 @@ export const BudgetPage: React.FC = () => {
   );
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('Credit Card');
   const [receiptDocId, setReceiptDocId] = useState<string>('');
+  const [receiptFile, setReceiptFile] = useState<File | null>(null);
+
+  // Tax Free state
+  const [isTaxFree, setIsTaxFree] = useState(false);
+  const [taxFreeCountry, setTaxFreeCountry] = useState<string>('OTHER');
+  const [taxFreeDocId, setTaxFreeDocId] = useState<string>('');
+  const [taxFreeFile, setTaxFreeFile] = useState<File | null>(null);
   const [notes, setNotes] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
 
-  if (!activeTrip) {
-    return (
-      <Card className="p-8 text-center">
-        <p className="text-sm font-semibold">{t.common.noActiveTrip}</p>
-      </Card>
-    );
-  }
-
-  const calculatedBaseAmount = Number(
-    ((Number(amount) || 0) * (Number(exchangeRate) || 1)).toFixed(2)
-  );
-
-  const openCreateExpense = () => {
-    setEditingExpense(null);
-    setTitle('');
-    setCategoryId(activeBudgetCategories[0]?.id || '');
-    setAmount('');
-    setCurrency(activeTrip.currency);
-    setExchangeRate('1');
-    const today = new Date().toISOString().split('T')[0];
-    setExchangeRateDate(today);
-    setExpenseDate(today);
-    setPaidBy(currentUser?.user_id || coupleMembers[0]?.user_id || '');
-    setPaymentMethod('Credit Card');
-    setReceiptDocId('');
-    setNotes('');
-    setExpenseModalOpen(true);
-  };
-
-  const openEditExpense = (ex: Expense) => {
-    setEditingExpense(ex);
-    setTitle(ex.title);
-    setCategoryId(ex.category_id);
-    setAmount(String(ex.amount));
-    setCurrency(ex.currency);
-    setExchangeRate(String(ex.exchange_rate));
-    setExchangeRateDate(ex.exchange_rate_date);
-    setExpenseDate(ex.expense_date);
-    setPaidBy(ex.paid_by || '');
-    setPaymentMethod(ex.payment_method);
-    setReceiptDocId(ex.receipt_document_id || '');
-    setNotes(ex.notes || '');
-    setExpenseModalOpen(true);
-  };
-
-  const handleSaveExpense = async (e: React.FormEvent) => {
-    e.preventDefault();
-    try {
-      const origAmount = Number(amount);
-      const rate = currency === activeTrip.currency ? 1 : Number(exchangeRate);
-      if (origAmount <= 0 || rate <= 0) {
-        throw new Error('Amount and exchange rate must be greater than 0');
-      }
-      const baseAmt = Number((origAmount * rate).toFixed(2));
-
-      const payload = {
-        trip_id: activeTrip.id,
-        category_id: categoryId || activeBudgetCategories[0]?.id,
-        title: title.trim(),
-        amount: origAmount,
-        currency,
-        base_amount: baseAmt,
-        exchange_rate: rate,
-        exchange_rate_date: exchangeRateDate,
-        paid_by: paidBy || null,
-        expense_date: expenseDate,
-        payment_method: paymentMethod,
-        receipt_document_id: receiptDocId || null,
-        notes: notes.trim() || null,
-      };
-
-      if (editingExpense) {
-        await updateExpense(editingExpense.id, payload);
-        notify(lang === 'he' ? 'ההוצאה עודכנה' : 'Expense updated', 'success');
-      } else {
-        await createExpense(payload);
-        notify(lang === 'he' ? 'ההוצאה נוספה לתקציב' : 'Expense recorded', 'success');
-      }
-      setExpenseModalOpen(false);
-    } catch (err) {
-      handleError(err);
+  useEffect(() => {
+    if (searchParams.get('action') === 'new' && activeTrip) {
+      openCreateExpense();
+      setSearchParams({}, { replace: true });
     }
-  };
+  }, [searchParams, setSearchParams, activeTrip]);
 
-  // Filtered expenses
   const filteredExpenses = useMemo(() => {
     return activeExpenses.filter((ex) => {
       if (categoryFilter !== 'ALL' && ex.category_id !== categoryFilter) return false;
@@ -196,10 +126,6 @@ export const BudgetPage: React.FC = () => {
     });
   }, [activeExpenses, categoryFilter, payerFilter, dateFilter]);
 
-  const totalActual = activeExpenses.reduce((sum, ex) => sum + Number(ex.base_amount), 0);
-  const remaining = activeTrip.planned_budget - totalActual;
-
-  // Report 1 & 2: Planned vs Actual & Expenses by Category
   const categoryReportData = useMemo(() => {
     return activeBudgetCategories.map((cat) => {
       const spent = activeExpenses
@@ -214,7 +140,6 @@ export const BudgetPage: React.FC = () => {
     });
   }, [activeBudgetCategories, activeExpenses, t.budget.categories]);
 
-  // Report 3: Expenses by Day
   const expensesByDayData = useMemo(() => {
     const map = new Map<string, number>();
     activeExpenses.forEach((ex) => {
@@ -228,7 +153,6 @@ export const BudgetPage: React.FC = () => {
       }));
   }, [activeExpenses, lang]);
 
-  // Report 4: Expenses by Partner
   const expensesByPartnerData = useMemo(() => {
     return coupleMembers.map((cm) => {
       const total = activeExpenses
@@ -241,6 +165,154 @@ export const BudgetPage: React.FC = () => {
     });
   }, [coupleMembers, activeExpenses, t.common.partner]);
 
+  if (!activeTrip) {
+    return (
+      <Card className="p-8 text-center">
+        <p className="text-sm font-semibold">{t.common.noActiveTrip}</p>
+      </Card>
+    );
+  }
+
+  const calculatedBaseAmount = Number(
+    ((Number(amount) || 0) * (currency === activeTrip.currency ? 1 : Number(exchangeRate) || 1)).toFixed(2)
+  );
+  const taxFreeEstimate = calculateTaxFreeRefund(calculatedBaseAmount, taxFreeCountry);
+
+  function openCreateExpense() {
+    if (!activeTrip) return;
+    setEditingExpense(null);
+    setTitle('');
+    setCategoryId(activeBudgetCategories[0]?.id || '');
+    setAmount('');
+    setCurrency(activeTrip.currency);
+    setExchangeRate('1');
+    const today = new Date().toISOString().split('T')[0];
+    setExchangeRateDate(today);
+    setExpenseDate(today);
+    setPaidBy(currentUser?.user_id || coupleMembers[0]?.user_id || '');
+    setPaymentMethod('Credit Card');
+    setReceiptDocId('');
+    setReceiptFile(null);
+    setIsTaxFree(false);
+    setTaxFreeCountry(matchTaxFreeCountryFromTrip(activeTrip.country));
+    setTaxFreeDocId('');
+    setTaxFreeFile(null);
+    setNotes('');
+    setExpenseModalOpen(true);
+  }
+
+  const openEditExpense = (ex: Expense) => {
+    setEditingExpense(ex);
+    setTitle(ex.title);
+    setCategoryId(ex.category_id);
+    setAmount(String(ex.amount));
+    setCurrency(ex.currency);
+    setExchangeRate(String(ex.exchange_rate));
+    setExchangeRateDate(ex.exchange_rate_date);
+    setExpenseDate(ex.expense_date);
+    setPaidBy(ex.paid_by || '');
+    setPaymentMethod(ex.payment_method);
+    setReceiptDocId(ex.receipt_document_id || '');
+    setReceiptFile(null);
+    setIsTaxFree(Boolean(ex.is_tax_free));
+    setTaxFreeCountry(ex.tax_free_country || matchTaxFreeCountryFromTrip(activeTrip.country));
+    setTaxFreeDocId(ex.tax_free_document_id || '');
+    setTaxFreeFile(null);
+    setNotes(ex.notes || '');
+    setExpenseModalOpen(true);
+  };
+
+  const handleSaveExpense = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      setIsSaving(true);
+      const origAmount = Number(amount);
+      const rate = currency === activeTrip.currency ? 1 : Number(exchangeRate);
+      if (origAmount <= 0 || rate <= 0) {
+        throw new Error('Amount and exchange rate must be greater than 0');
+      }
+      const baseAmt = Number((origAmount * rate).toFixed(2));
+
+      // Upload Receipt photo directly if user picked a file
+      let finalReceiptDocId = receiptDocId || null;
+      if (receiptFile) {
+        const uploaded = await uploadDocument(receiptFile, {
+          name: `${lang === 'he' ? 'קבלה' : 'Receipt'} – ${title.trim()}`,
+          category: 'Receipts',
+          expiration_date: null,
+          description: `${origAmount} ${currency}`,
+        });
+        finalReceiptDocId = uploaded.id;
+      }
+
+      // Upload Tax-Free form photo directly if user picked a file
+      let finalTaxFreeDocId = taxFreeDocId || null;
+      if (isTaxFree && taxFreeFile) {
+        const uploadedTf = await uploadDocument(taxFreeFile, {
+          name: `Tax Free – ${title.trim()}`,
+          category: 'Receipts',
+          expiration_date: null,
+          description: `Tax Free Form (${taxFreeCountry})`,
+        });
+        finalTaxFreeDocId = uploadedTf.id;
+      }
+
+      const refundAmount = isTaxFree
+        ? calculateTaxFreeRefund(baseAmt, taxFreeCountry).estimatedRefund
+        : 0;
+
+      const payload = {
+        trip_id: activeTrip.id,
+        category_id: categoryId || activeBudgetCategories[0]?.id,
+        title: title.trim(),
+        amount: origAmount,
+        currency,
+        base_amount: baseAmt,
+        exchange_rate: rate,
+        exchange_rate_date: exchangeRateDate,
+        paid_by: paidBy || null,
+        expense_date: expenseDate,
+        payment_method: paymentMethod,
+        receipt_document_id: finalReceiptDocId,
+        tax_free_document_id: isTaxFree ? finalTaxFreeDocId : null,
+        is_tax_free: isTaxFree,
+        tax_free_country: isTaxFree ? taxFreeCountry : null,
+        tax_free_refund_amount: refundAmount,
+        notes: notes.trim() || null,
+      };
+
+      if (editingExpense) {
+        await updateExpense(editingExpense.id, payload);
+        notify(lang === 'he' ? 'ההוצאה עודכנה' : 'Expense updated', 'success');
+      } else {
+        await createExpense(payload);
+        notify(lang === 'he' ? 'ההוצאה נוספה לתקציב' : 'Expense recorded', 'success');
+      }
+      setExpenseModalOpen(false);
+    } catch (err) {
+      handleError(err);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const openDocumentPreview = async (doc: TripDocument) => {
+    try {
+      const url = await getDocumentSignedUrl(doc);
+      setPreviewDocTitle(doc.name);
+      setPreviewDocUrl(url);
+    } catch (err) {
+      handleError(err);
+    }
+  };
+
+  const totalActual = activeExpenses.reduce((sum, ex) => sum + Number(ex.base_amount), 0);
+  const remaining = activeTrip.planned_budget - totalActual;
+  const totalTaxFreeRefund = activeExpenses.reduce(
+    (sum, ex) => sum + (ex.is_tax_free ? Number(ex.tax_free_refund_amount || 0) : 0),
+    0
+  );
+
   return (
     <div className="space-y-5">
       {/* Header */}
@@ -251,7 +323,7 @@ export const BudgetPage: React.FC = () => {
             {activeTrip.name} • {t.common.currency}: {activeTrip.currency}
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Button variant="outline" size="sm" onClick={() => setAllocationsOpen(true)}>
             <SlidersHorizontal className="w-4 h-4" />
             <span>{t.budget.editAllocations}</span>
@@ -263,35 +335,60 @@ export const BudgetPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Top Summary Cards */}
-      <div className="grid grid-cols-3 gap-3">
-        <Card className="p-4">
-          <div className="text-xs text-navy/60">{t.dashboard.plannedBudget}</div>
-          <div className="text-lg sm:text-xl font-bold text-navy mt-1">
+      {/* Top Summary Cards (Including Direct Edit Total Budget + Tax Free Refund Card) */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <Card className="p-4 relative group">
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-navy/60">{t.dashboard.plannedBudget}</span>
+            <button
+              type="button"
+              onClick={() => {
+                setTotalBudgetInput(String(activeTrip.planned_budget));
+                setEditTotalBudgetOpen(true);
+              }}
+              className="text-xs font-bold text-sand hover:underline flex items-center gap-1"
+              title={lang === 'he' ? 'שינוי תקציב הטיול' : 'Edit Total Budget'}
+            >
+              <Edit3 className="w-3.5 h-3.5" />
+              <span>{lang === 'he' ? 'עדכון' : 'Edit'}</span>
+            </button>
+          </div>
+          <div className="text-lg sm:text-xl font-bold text-navy mt-1 truncate">
             {formatCurrency(activeTrip.planned_budget, activeTrip.currency, lang)}
           </div>
         </Card>
+
         <Card className="p-4">
           <div className="text-xs text-navy/60">{t.dashboard.actualExpenses}</div>
-          <div className="text-lg sm:text-xl font-bold text-sand-dark mt-1">
+          <div className="text-lg sm:text-xl font-bold text-sand-dark mt-1 truncate">
             {formatCurrency(totalActual, activeTrip.currency, lang)}
           </div>
         </Card>
+
         <Card className="p-4">
           <div className="text-xs text-navy/60">{t.dashboard.remainingBudget}</div>
           <div
-            className={`text-lg sm:text-xl font-bold mt-1 ${
+            className={`text-lg sm:text-xl font-bold mt-1 truncate ${
               remaining < 0 ? 'text-red-600' : 'text-sage-dark'
             }`}
           >
             {formatCurrency(remaining, activeTrip.currency, lang)}
           </div>
         </Card>
+
+        <Card className="p-4 bg-gradient-to-br from-sage/20 to-surface border-sage/40">
+          <div className="text-xs font-bold text-navy/75 flex items-center gap-1">
+            <BadgePercent className="w-3.5 h-3.5 text-sage-dark" />
+            <span>{lang === 'he' ? 'החזר Tax Free צפוי' : 'Est. Tax-Free Refund'}</span>
+          </div>
+          <div className="text-lg sm:text-xl font-extrabold text-sage-dark mt-1 truncate">
+            +{formatCurrency(totalTaxFreeRefund, activeTrip.currency, lang)}
+          </div>
+        </Card>
       </div>
 
       {/* Visual Reports Grid (Recharts) */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* Chart 1: Planned vs Actual by Category */}
         <Card className="space-y-3">
           <h3 className="font-bold text-sm">{t.budget.byCategory}</h3>
           <div className="h-56 w-full" dir="ltr">
@@ -308,11 +405,10 @@ export const BudgetPage: React.FC = () => {
           </div>
         </Card>
 
-        {/* Chart 2: Expenses by Day & Partner Split */}
         <Card className="space-y-3">
-          <div className="flex items-center justify-between">
-            <h3 className="font-bold text-sm">{t.budget.byDay} & {t.budget.byPartner}</h3>
-          </div>
+          <h3 className="font-bold text-sm">
+            {t.budget.byDay} & {t.budget.byPartner}
+          </h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-center">
             <div className="h-48 w-full" dir="ltr">
               <ResponsiveContainer width="100%" height="100%">
@@ -400,8 +496,9 @@ export const BudgetPage: React.FC = () => {
           {filteredExpenses.map((ex) => {
             const cat = activeBudgetCategories.find((c) => c.id === ex.category_id);
             const payer = coupleMembers.find((cm) => cm.user_id === ex.paid_by)?.profile;
-            const linkedReceipt = activeDocuments.find(
-              (d) => d.id === ex.receipt_document_id
+            const linkedReceipt = activeDocuments.find((d) => d.id === ex.receipt_document_id);
+            const linkedTaxFreeDoc = activeDocuments.find(
+              (d) => d.id === ex.tax_free_document_id
             );
 
             return (
@@ -409,9 +506,15 @@ export const BudgetPage: React.FC = () => {
                 key={ex.id}
                 className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
               >
-                <div className="space-y-1 min-w-0">
-                  <div className="flex flex-wrap items-center gap-2">
+                <div className="space-y-1.5 min-w-0">
+                  <div className="flex flex-wrap items-center gap-1.5">
                     {cat && <Badge variant="sage">{t.budget.categories[cat.name]}</Badge>}
+                    {ex.source_event_id && (
+                      <Badge variant="navy">
+                        <CalendarRange className="w-3 h-3 me-1" />
+                        {lang === 'he' ? 'נמשך מהמסלול' : 'From Itinerary'}
+                      </Badge>
+                    )}
                     <span className="text-xs text-navy/60">
                       {formatShortDate(ex.expense_date, lang)} • {ex.payment_method}
                     </span>
@@ -420,14 +523,47 @@ export const BudgetPage: React.FC = () => {
                         {t.budget.paidBy}: {payer.full_name}
                       </Badge>
                     )}
+                  </div>
+
+                  <h4 className="font-bold text-sm text-navy">{ex.title}</h4>
+
+                  {/* Receipt / Tax Free Refund Badges & Quick Preview */}
+                  <div className="flex flex-wrap items-center gap-2 pt-0.5">
+                    {ex.is_tax_free && Number(ex.tax_free_refund_amount) > 0 && (
+                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-sage/25 text-navy text-xs font-bold border border-sage/50">
+                        <BadgePercent className="w-3.5 h-3.5 text-sage-dark" />
+                        <span>
+                          Tax Free: +
+                          {formatCurrency(
+                            Number(ex.tax_free_refund_amount),
+                            activeTrip.currency,
+                            lang
+                          )}
+                        </span>
+                      </span>
+                    )}
                     {linkedReceipt && (
-                      <Badge variant="sand">
-                        <FileText className="w-3 h-3 me-1" />
-                        {linkedReceipt.name}
-                      </Badge>
+                      <button
+                        type="button"
+                        onClick={() => openDocumentPreview(linkedReceipt)}
+                        className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-sand/20 text-navy text-xs font-semibold hover:bg-sand/30"
+                      >
+                        <Eye className="w-3 h-3" />
+                        <span>{lang === 'he' ? 'צפייה בקבלה' : 'View Receipt'}</span>
+                      </button>
+                    )}
+                    {linkedTaxFreeDoc && (
+                      <button
+                        type="button"
+                        onClick={() => openDocumentPreview(linkedTaxFreeDoc)}
+                        className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-navy/10 text-navy text-xs font-semibold hover:bg-navy/15"
+                      >
+                        <FileText className="w-3 h-3" />
+                        <span>{lang === 'he' ? 'טופס Tax Free' : 'Tax-Free Form'}</span>
+                      </button>
                     )}
                   </div>
-                  <h4 className="font-bold text-sm text-navy">{ex.title}</h4>
+
                   {ex.notes && <p className="text-xs text-navy/65">{ex.notes}</p>}
                 </div>
 
@@ -462,6 +598,50 @@ export const BudgetPage: React.FC = () => {
         </div>
       )}
 
+      {/* Edit Total Planned Budget Modal */}
+      <ModalDrawer
+        open={editTotalBudgetOpen}
+        onClose={() => setEditTotalBudgetOpen(false)}
+        title={lang === 'he' ? 'עדכון תקציב הטיול הכולל' : 'Update Total Trip Budget'}
+      >
+        <form
+          onSubmit={async (e) => {
+            e.preventDefault();
+            try {
+              await updateTrip(activeTrip.id, {
+                planned_budget: Math.max(0, Number(totalBudgetInput) || 0),
+              });
+              setEditTotalBudgetOpen(false);
+              notify(lang === 'he' ? 'התקציב הכולל עודכן!' : 'Total budget updated!', 'success');
+            } catch (err) {
+              handleError(err);
+            }
+          }}
+          className="space-y-4"
+        >
+          <Input
+            type="number"
+            min="0"
+            step="10"
+            required
+            label={`${t.dashboard.plannedBudget} (${activeTrip.currency})`}
+            value={totalBudgetInput}
+            onChange={(e) => setTotalBudgetInput(e.target.value)}
+            autoFocus
+          />
+          <div className="flex justify-end gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setEditTotalBudgetOpen(false)}
+            >
+              {t.common.cancel}
+            </Button>
+            <Button type="submit">{t.common.save}</Button>
+          </div>
+        </form>
+      </ModalDrawer>
+
       {/* Category Allocations Modal */}
       <ModalDrawer
         open={allocationsOpen}
@@ -492,7 +672,7 @@ export const BudgetPage: React.FC = () => {
         </div>
       </ModalDrawer>
 
-      {/* Add / Edit Expense Drawer */}
+      {/* Add / Edit Expense Drawer (With Receipt Photo Upload + Tax Free Calculator & Photo) */}
       <ModalDrawer
         open={expenseModalOpen}
         onClose={() => setExpenseModalOpen(false)}
@@ -504,7 +684,7 @@ export const BudgetPage: React.FC = () => {
             required
             value={title}
             onChange={(e) => setTitle(e.target.value)}
-            placeholder={lang === 'he' ? 'למשל: ארוחת ערב בטראסטוורה' : 'e.g., Dinner in Trastevere'}
+            placeholder={lang === 'he' ? 'למשל: קניות ב-Zara / מסעדה' : 'e.g., Shopping / Dinner'}
           />
 
           <div className="grid grid-cols-2 gap-3">
@@ -544,9 +724,7 @@ export const BudgetPage: React.FC = () => {
               onChange={(e) => {
                 const nextCurr = e.target.value as CurrencyCode;
                 setCurrency(nextCurr);
-                if (nextCurr === activeTrip.currency) {
-                  setExchangeRate('1');
-                }
+                if (nextCurr === activeTrip.currency) setExchangeRate('1');
               }}
             >
               {CURRENCIES.map((c) => (
@@ -609,18 +787,88 @@ export const BudgetPage: React.FC = () => {
             </Select>
           </div>
 
-          <Select
-            label={t.budget.receiptDoc}
-            value={receiptDocId}
-            onChange={(e) => setReceiptDocId(e.target.value)}
-          >
-            <option value="">{lang === 'he' ? 'ללא קבלה מקושרת' : 'None'}</option>
-            {activeDocuments.map((doc) => (
-              <option key={doc.id} value={doc.id}>
-                {doc.name} ({doc.category})
-              </option>
-            ))}
-          </Select>
+          {/* Direct Receipt Photo Upload */}
+          <div className="p-3 rounded-2xl bg-ivory/70 border border-navy/10 space-y-2">
+            <label className="text-xs font-bold text-navy flex items-center gap-1.5">
+              <Camera className="w-4 h-4 text-sand" />
+              <span>{lang === 'he' ? 'צילום / העלאת קבלה (נשמר בכספת)' : 'Upload Receipt Photo'}</span>
+            </label>
+            <input
+              type="file"
+              accept="image/*,.pdf"
+              onChange={(e) => setReceiptFile(e.target.files?.[0] || null)}
+              className="block w-full text-xs text-navy file:me-3 file:py-1.5 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-navy file:text-white"
+            />
+          </div>
+
+          {/* Tax Free Toggle + Country Refund Calculator + Tax Free Form Photo */}
+          <div className="p-3.5 rounded-2xl bg-sage/15 border border-sage/40 space-y-3">
+            <label className="flex items-center justify-between cursor-pointer">
+              <span className="text-xs font-bold text-navy flex items-center gap-1.5">
+                <BadgePercent className="w-4 h-4 text-sage-dark" />
+                <span>
+                  {lang === 'he'
+                    ? 'הוצאה זכאית להחזר מע״מ (Tax Free)'
+                    : 'Eligible for Tax-Free VAT Refund'}
+                </span>
+              </span>
+              <input
+                type="checkbox"
+                checked={isTaxFree}
+                onChange={(e) => setIsTaxFree(e.target.checked)}
+                className="w-4 h-4 accent-navy rounded"
+              />
+            </label>
+
+            {isTaxFree && (
+              <div className="space-y-3 pt-1 border-t border-sage/30">
+                <Select
+                  label={lang === 'he' ? 'מדינת הרכישה (לחישוב החזר)' : 'Purchase Country'}
+                  value={taxFreeCountry}
+                  onChange={(e) => setTaxFreeCountry(e.target.value)}
+                >
+                  {TAX_FREE_COUNTRIES.map((c) => (
+                    <option key={c.code} value={c.code}>
+                      {lang === 'he' ? c.nameHe : c.nameEn} (VAT {Math.round(c.vatRate * 100)}% •{' '}
+                      {lang === 'he' ? 'החזר נטו' : 'Net'} ~{Math.round(c.netRefundRate * 100)}%)
+                    </option>
+                  ))}
+                </Select>
+
+                <div className="p-3 rounded-xl bg-surface border border-sage/40 space-y-1 text-xs">
+                  <div className="flex items-center justify-between">
+                    <span className="text-navy/70">
+                      {lang === 'he' ? 'החזר Tax Free משוער:' : 'Estimated Net Refund:'}
+                    </span>
+                    <span className="font-extrabold text-base text-sage-dark">
+                      +{formatCurrency(taxFreeEstimate.estimatedRefund, activeTrip.currency, lang)}
+                    </span>
+                  </div>
+                  <div className="text-[11px] text-navy/60">
+                    {lang === 'he' ? 'מינימום לקבלה במדינה זו:' : 'Min. receipt threshold:'}{' '}
+                    <strong>{taxFreeEstimate.rule.minSpendLabel}</strong>
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-navy flex items-center gap-1.5">
+                    <FileText className="w-3.5 h-3.5 text-sand" />
+                    <span>
+                      {lang === 'he'
+                        ? 'צילום / העלאת טופס Tax Free'
+                        : 'Upload Tax-Free Form Photo'}
+                    </span>
+                  </label>
+                  <input
+                    type="file"
+                    accept="image/*,.pdf"
+                    onChange={(e) => setTaxFreeFile(e.target.files?.[0] || null)}
+                    className="block w-full text-xs text-navy file:me-3 file:py-1.5 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-sand file:text-white"
+                  />
+                </div>
+              </div>
+            )}
+          </div>
 
           <Textarea
             label={t.common.notes}
@@ -632,9 +880,26 @@ export const BudgetPage: React.FC = () => {
             <Button type="button" variant="outline" onClick={() => setExpenseModalOpen(false)}>
               {t.common.cancel}
             </Button>
-            <Button type="submit">{t.common.save}</Button>
+            <Button type="submit" disabled={isSaving}>
+              {isSaving ? t.common.loading : t.common.save}
+            </Button>
           </div>
         </form>
+      </ModalDrawer>
+
+      {/* Signed Document Preview Modal */}
+      <ModalDrawer
+        open={Boolean(previewDocUrl)}
+        onClose={() => setPreviewDocUrl(null)}
+        title={previewDocTitle}
+      >
+        {previewDocUrl && (
+          <img
+            src={previewDocUrl}
+            alt={previewDocTitle}
+            className="w-full max-h-[65vh] object-contain rounded-2xl border border-navy/10"
+          />
+        )}
       </ModalDrawer>
     </div>
   );
