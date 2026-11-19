@@ -102,10 +102,32 @@ app.get('/api/health', async (_req, res) => {
   }
 });
 
+// In-memory sliding-window rate limiter for auth endpoints
+const authAttempts = new Map<string, number[]>();
+function authRateLimit(req: express.Request, res: express.Response, next: express.NextFunction) {
+  const ip =
+    (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() ||
+    req.socket.remoteAddress ||
+    'unknown';
+  const now = Date.now();
+  const windowMs = 15 * 60 * 1000; // 15 minutes
+  const maxAttempts = 20;
+  const recent = (authAttempts.get(ip) || []).filter((ts) => now - ts < windowMs);
+  if (recent.length >= maxAttempts) {
+    res.status(429).json({
+      error: 'Too many authentication attempts. Please wait a few minutes and try again.',
+    });
+    return;
+  }
+  recent.push(now);
+  authAttempts.set(ip, recent);
+  next();
+}
+
 // ============================================================================
 // AUTHENTICATION ENDPOINTS
 // ============================================================================
-app.post('/api/auth/signup', async (req, res) => {
+app.post('/api/auth/signup', authRateLimit, async (req, res) => {
   try {
     const { email, password, fullName, preferredLanguage } = req.body as {
       email: string;
@@ -145,7 +167,7 @@ app.post('/api/auth/signup', async (req, res) => {
   }
 });
 
-app.post('/api/auth/signin', async (req, res) => {
+app.post('/api/auth/signin', authRateLimit, async (req, res) => {
   try {
     const { email, password } = req.body as { email: string; password: string };
     const cleanEmail = (email || '').trim().toLowerCase();
@@ -163,6 +185,32 @@ app.post('/api/auth/signin', async (req, res) => {
     const [profile] = await query('SELECT * FROM profiles WHERE user_id = $1', [user.id]);
     const token = signToken({ userId: user.id });
     res.json({ token, profile });
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+app.post('/api/auth/change-password', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body as {
+      currentPassword?: string;
+      newPassword?: string;
+    };
+    if (!currentPassword || !newPassword || newPassword.length < 6) {
+      res.status(400).json({ error: 'Current password and new password (6+ chars) are required' });
+      return;
+    }
+    const [user] = await query<{ id: string; password_hash: string }>(
+      'SELECT id, password_hash FROM users WHERE id = $1',
+      [req.userId!]
+    );
+    if (!user || !verifyPassword(currentPassword, user.password_hash)) {
+      res.status(401).json({ error: 'Current password is incorrect' });
+      return;
+    }
+    const newHash = hashPassword(newPassword);
+    await query('UPDATE users SET password_hash = $1 WHERE id = $2', [newHash, req.userId!]);
+    res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: (err as Error).message });
   }
@@ -476,6 +524,30 @@ app.post('/api/couples/partner', requireAuth, async (req: AuthenticatedRequest, 
   }
 });
 
+app.post('/api/couples/leave', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const userId = req.userId!;
+    const coupleId = await getUserCoupleId(userId);
+    if (!coupleId) {
+      res.status(400).json({ error: 'You are not in any workspace' });
+      return;
+    }
+    await query(
+      `DELETE FROM trip_members
+       WHERE user_id = $1 AND trip_id IN (SELECT id FROM trips WHERE couple_id = $2)`,
+      [userId, coupleId]
+    );
+    await query('DELETE FROM couple_members WHERE couple_id = $1 AND user_id = $2', [
+      coupleId,
+      userId,
+    ]);
+    broadcastCoupleUpdate(coupleId, 'member_left');
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
 // ============================================================================
 // TRIPS CRUD (Auto-initializes itinerary_days, budget_categories & trip_members)
 // ============================================================================
@@ -573,7 +645,13 @@ app.patch('/api/trips/:id', requireAuth, async (req: AuthenticatedRequest, res) 
   try {
     const coupleId = await assertTripAccess(req.userId!, req.params.id);
     const b = req.body;
-    const [updated] = await query(
+    const [updated] = await query<{
+      id: string;
+      start_date: string;
+      end_date: string;
+      destination: string;
+      destinations: Array<{ city: string; country: string; start_date?: string; end_date?: string }> | null;
+    }>(
       `UPDATE trips SET
         name = COALESCE($1, name),
         destination = COALESCE($2, destination),
@@ -607,6 +685,63 @@ app.patch('/api/trips/:id', requireAuth, async (req: AuthenticatedRequest, res) 
         req.params.id,
       ]
     );
+
+    // Automatically synchronize itinerary_days when trip date range changes
+    if (updated && (b.start_date !== undefined || b.end_date !== undefined)) {
+      const targetDates = getDateRange(updated.start_date, updated.end_date);
+      const targetSet = new Set(targetDates);
+      const stops = Array.isArray(updated.destinations) ? updated.destinations : [];
+
+      const existingDays = await query<{ id: string; date: string; event_count: string }>(
+        `SELECT d.id, d.date, COUNT(e.id)::text AS event_count
+         FROM itinerary_days d
+         LEFT JOIN itinerary_events e ON e.day_id = d.id
+         WHERE d.trip_id = $1
+         GROUP BY d.id, d.date`,
+        [updated.id]
+      );
+      const existingByDate = new Set(existingDays.map((d) => d.date));
+
+      // Remove empty days outside the new date range
+      for (const day of existingDays) {
+        if (!targetSet.has(day.date) && Number(day.event_count) === 0) {
+          await query('DELETE FROM itinerary_days WHERE id = $1', [day.id]);
+        }
+      }
+
+      // Insert any missing dates inside the new date range
+      for (let i = 0; i < targetDates.length; i++) {
+        const dateStr = targetDates[i];
+        if (!existingByDate.has(dateStr)) {
+          let loc = updated.destination;
+          if (stops.length > 0) {
+            const matched = stops.find(
+              (s) => s.start_date && s.end_date && dateStr >= s.start_date && dateStr <= s.end_date
+            );
+            if (matched) {
+              loc = `${matched.city}, ${matched.country}`;
+            }
+          }
+          await query(
+            'INSERT INTO itinerary_days (trip_id, day_number, date, location) VALUES ($1, $2, $3, $4)',
+            [updated.id, i + 1, dateStr, loc]
+          );
+        }
+      }
+
+      // Re-number all remaining days chronologically
+      const finalDays = await query<{ id: string }>(
+        'SELECT id FROM itinerary_days WHERE trip_id = $1 ORDER BY date ASC',
+        [updated.id]
+      );
+      for (let i = 0; i < finalDays.length; i++) {
+        await query('UPDATE itinerary_days SET day_number = $1 WHERE id = $2', [
+          i + 1,
+          finalDays[i].id,
+        ]);
+      }
+    }
+
     broadcastCoupleUpdate(coupleId, 'trip_updated');
     res.json(updated);
   } catch (err) {
@@ -727,6 +862,32 @@ const EVENT_TO_BUDGET_CAT: Record<string, string> = {
   Other: 'Other',
 };
 
+// Approximate USD base rates for automatic multi-currency conversion when syncing booked events
+const USD_EXCHANGE_RATES: Record<string, number> = {
+  USD: 1,
+  EUR: 0.92,
+  ILS: 3.7,
+  GBP: 0.79,
+  JPY: 152,
+  THB: 35,
+  CHF: 0.88,
+  PLN: 4.0,
+  HUF: 370,
+  CZK: 23.5,
+  CAD: 1.38,
+  AUD: 1.53,
+};
+
+function getEstimatedExchangeRate(fromCurrency: string, toCurrency: string): number {
+  const from = fromCurrency.toUpperCase();
+  const to = toCurrency.toUpperCase();
+  if (from === to) return 1;
+  const fromPerUsd = USD_EXCHANGE_RATES[from];
+  const toPerUsd = USD_EXCHANGE_RATES[to];
+  if (!fromPerUsd || !toPerUsd) return 1;
+  return Math.round((toPerUsd / fromPerUsd) * 10000) / 10000;
+}
+
 async function syncBookedEventToExpense(
   ev: {
     id: string;
@@ -742,6 +903,8 @@ async function syncBookedEventToExpense(
   userId: string
 ) {
   if (ev.status !== 'Booked' || !ev.estimated_cost || Number(ev.estimated_cost) <= 0) {
+    // If event was un-booked / cancelled / cost cleared, remove any auto-synced expense
+    await query('DELETE FROM expenses WHERE source_event_id = $1', [ev.id]);
     return;
   }
   const budgetCatName = EVENT_TO_BUDGET_CAT[ev.category] || 'Other';
@@ -759,30 +922,36 @@ async function syncBookedEventToExpense(
     'SELECT date FROM itinerary_days WHERE id = $1',
     [ev.day_id]
   );
-  const expCurrency = (ev.currency || trip?.currency || 'EUR').trim();
+  const tripCurrency = (trip?.currency || 'EUR').trim().toUpperCase();
+  const expCurrency = (ev.currency || tripCurrency).trim().toUpperCase();
   const expDate = day?.date || new Date().toISOString().split('T')[0];
+  const exchangeRate = getEstimatedExchangeRate(expCurrency, tripCurrency);
+  const amountNum = Number(ev.estimated_cost);
+  const baseAmount = Math.round(amountNum * exchangeRate * 100) / 100;
 
   await query(
     `INSERT INTO expenses (
       trip_id, category_id, title, amount, currency, base_amount,
       exchange_rate, exchange_rate_date, paid_by, expense_date,
       payment_method, notes, source_event_id
-    ) VALUES ($1,$2,$3,$4,$5,$6,1,$7,$8,$9,'Credit Card',$10,$11)
+    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'Credit Card',$11,$12)
     ON CONFLICT (source_event_id) DO UPDATE SET
       category_id = EXCLUDED.category_id,
       title = EXCLUDED.title,
       amount = EXCLUDED.amount,
       currency = EXCLUDED.currency,
       base_amount = EXCLUDED.base_amount,
+      exchange_rate = EXCLUDED.exchange_rate,
       expense_date = EXCLUDED.expense_date,
       updated_at = now()`,
     [
       ev.trip_id,
       cat.id,
       ev.title,
-      Number(ev.estimated_cost),
+      amountNum,
       expCurrency,
-      Number(ev.estimated_cost),
+      baseAmount,
+      exchangeRate,
       expDate,
       userId,
       expDate,
@@ -884,6 +1053,8 @@ app.delete('/api/events/:id', requireAuth, async (req: AuthenticatedRequest, res
     const [existing] = await query<{ trip_id: string }>('SELECT trip_id FROM itinerary_events WHERE id = $1', [req.params.id]);
     if (!existing) { res.status(404).json({ error: 'Event not found' }); return; }
     const coupleId = await assertTripAccess(req.userId!, existing.trip_id);
+    // Remove any auto-synced expense linked to this event
+    await query('DELETE FROM expenses WHERE source_event_id = $1', [req.params.id]);
     await query('DELETE FROM itinerary_events WHERE id = $1', [req.params.id]);
     broadcastCoupleUpdate(coupleId, 'event_deleted');
     res.json({ ok: true });
@@ -1440,6 +1611,58 @@ app.post('/api/memories', requireAuth, upload.single('image'), async (req: Authe
     );
     broadcastCoupleUpdate(coupleId, 'memory_created');
     res.status(201).json(memory);
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+app.patch('/api/memories/:id', requireAuth, upload.single('image'), async (req: AuthenticatedRequest, res) => {
+  try {
+    const [mem] = await query<{ trip_id: string; image_path: string | null }>(
+      'SELECT trip_id, image_path FROM memories WHERE id = $1',
+      [req.params.id]
+    );
+    if (!mem) { res.status(404).json({ error: 'Memory not found' }); return; }
+    const coupleId = await assertTripAccess(req.userId!, mem.trip_id);
+
+    const { title, description, location, rating, memory_date } = req.body;
+    let nextImagePath = mem.image_path;
+
+    if (req.file) {
+      const sanitized = req.file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_');
+      nextImagePath = `${coupleId}/${mem.trip_id}/${crypto.randomUUID()}-${sanitized}`;
+      await query(
+        `INSERT INTO private_file_blobs (file_path, bucket, couple_id, trip_id, mime_type, file_size, data)
+         VALUES ($1, 'trip-memories', $2, $3, $4, $5, $6)`,
+        [nextImagePath, coupleId, mem.trip_id, req.file.mimetype, req.file.size, req.file.buffer]
+      );
+      if (mem.image_path) {
+        await query('DELETE FROM private_file_blobs WHERE file_path = $1', [mem.image_path]);
+      }
+    }
+
+    const [updated] = await query(
+      `UPDATE memories SET
+        title = COALESCE($1, title),
+        description = $2,
+        location = $3,
+        rating = COALESCE($4, rating),
+        memory_date = COALESCE($5, memory_date),
+        image_path = $6,
+        updated_at = now()
+      WHERE id = $7 RETURNING *`,
+      [
+        title?.trim() || null,
+        description !== undefined ? description || null : null,
+        location !== undefined ? location || null : null,
+        rating ? Number(rating) : null,
+        memory_date || null,
+        nextImagePath,
+        req.params.id,
+      ]
+    );
+    broadcastCoupleUpdate(coupleId, 'memory_updated');
+    res.json(updated);
   } catch (err) {
     res.status(500).json({ error: (err as Error).message });
   }

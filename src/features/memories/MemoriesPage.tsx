@@ -11,7 +11,8 @@ import {
   Textarea,
 } from '@/components/ui/primitives';
 import { formatDate } from '@/lib/utils/formatters';
-import { MapPin, Plus, Sparkles, Star, Trash2 } from 'lucide-react';
+import { Memory } from '@/types/database.types';
+import { MapPin, Pencil, Plus, Sparkles, Star, Trash2 } from 'lucide-react';
 
 export const MemoriesPage: React.FC = () => {
   const { lang, t } = useI18n();
@@ -19,12 +20,14 @@ export const MemoriesPage: React.FC = () => {
     activeTrip,
     activeMemories,
     createMemory,
+    updateMemory,
     getMemoryImageUrl,
     deleteMemory,
   } = useAppStore();
   const { notify, handleError } = useToast();
 
   const [modalOpen, setModalOpen] = useState(false);
+  const [editingMemory, setEditingMemory] = useState<Memory | null>(null);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [location, setLocation] = useState('');
@@ -64,26 +67,64 @@ export const MemoriesPage: React.FC = () => {
     );
   }
 
+  const openCreateMemoryModal = () => {
+    setEditingMemory(null);
+    setTitle('');
+    setDescription('');
+    setLocation('');
+    setRating('5');
+    setMemoryDate(new Date().toISOString().split('T')[0]);
+    setImageFile(null);
+    setModalOpen(true);
+  };
+
+  const openEditMemoryModal = (mem: Memory) => {
+    setEditingMemory(mem);
+    setTitle(mem.title);
+    setDescription(mem.description || '');
+    setLocation(mem.location || '');
+    setRating(mem.rating ? String(mem.rating) : '5');
+    setMemoryDate(mem.memory_date || new Date().toISOString().split('T')[0]);
+    setImageFile(null);
+    setModalOpen(true);
+  };
+
   const handleSaveMemory = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      await createMemory(
-        {
-          trip_id: activeTrip.id,
-          title: title.trim(),
-          description: description.trim() || null,
-          location: location.trim() || null,
-          rating: rating ? Number(rating) : 5,
-          memory_date: memoryDate,
-        },
-        imageFile
-      );
+      if (editingMemory) {
+        await updateMemory(
+          editingMemory.id,
+          {
+            title: title.trim(),
+            description: description.trim() || null,
+            location: location.trim() || null,
+            rating: rating ? Number(rating) : 5,
+            memory_date: memoryDate,
+          },
+          imageFile
+        );
+        notify(lang === 'he' ? 'הזיכרון עודכן בהצלחה!' : 'Memory updated!', 'success');
+      } else {
+        await createMemory(
+          {
+            trip_id: activeTrip.id,
+            title: title.trim(),
+            description: description.trim() || null,
+            location: location.trim() || null,
+            rating: rating ? Number(rating) : 5,
+            memory_date: memoryDate,
+          },
+          imageFile
+        );
+        notify(lang === 'he' ? 'הזיכרון נשמר באלבום הטיול!' : 'Memory saved!', 'success');
+      }
       setModalOpen(false);
+      setEditingMemory(null);
       setTitle('');
       setDescription('');
       setLocation('');
       setImageFile(null);
-      notify(lang === 'he' ? 'הזיכרון נשמר באלבום הטיול!' : 'Memory saved!', 'success');
     } catch (err) {
       handleError(err);
     }
@@ -104,7 +145,7 @@ export const MemoriesPage: React.FC = () => {
           <h1 className="text-2xl font-bold text-navy">{t.memories.title}</h1>
           <p className="text-xs text-navy/65">{activeTrip.name}</p>
         </div>
-        <Button onClick={() => setModalOpen(true)}>
+        <Button onClick={openCreateMemoryModal}>
           <Plus className="w-4 h-4" />
           <span>{t.memories.addMemory}</span>
         </Button>
@@ -173,12 +214,22 @@ export const MemoriesPage: React.FC = () => {
                 {mem.description && (
                   <p className="text-xs text-navy/75 leading-relaxed">{mem.description}</p>
                 )}
-                <div className="pt-2 flex justify-end">
+                <div className="pt-2 flex justify-end gap-1">
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="text-navy/70"
+                    onClick={() => openEditMemoryModal(mem)}
+                    title={t.common.edit}
+                  >
+                    <Pencil className="w-4 h-4" />
+                  </Button>
                   <Button
                     size="icon"
                     variant="ghost"
                     className="text-red-600"
                     onClick={() => deleteMemory(mem)}
+                    title={t.common.delete}
                   >
                     <Trash2 className="w-4 h-4" />
                   </Button>
@@ -189,11 +240,20 @@ export const MemoriesPage: React.FC = () => {
         </div>
       )}
 
-      {/* Add Memory Drawer */}
+      {/* Add / Edit Memory Drawer */}
       <ModalDrawer
         open={modalOpen}
-        onClose={() => setModalOpen(false)}
-        title={t.memories.addMemory}
+        onClose={() => {
+          setModalOpen(false);
+          setEditingMemory(null);
+        }}
+        title={
+          editingMemory
+            ? lang === 'he'
+              ? 'עריכת זיכרון'
+              : 'Edit Memory'
+            : t.memories.addMemory
+        }
       >
         <form onSubmit={handleSaveMemory} className="space-y-3.5">
           <Input

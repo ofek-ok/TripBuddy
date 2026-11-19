@@ -13,7 +13,7 @@ import {
 } from '@/components/ui/primitives';
 import { formatCurrency, formatDate } from '@/lib/utils/formatters';
 import { Place, PlaceVisitStatus } from '@/types/database.types';
-import { CalendarPlus, MapPin, Plus, Star, Trash2 } from 'lucide-react';
+import { CalendarPlus, MapPin, Pencil, Plus, Star, Trash2 } from 'lucide-react';
 
 const VISIT_STATUSES: PlaceVisitStatus[] = ['Want to Visit', 'Planned', 'Visited'];
 
@@ -32,6 +32,7 @@ export const PlacesPage: React.FC = () => {
 
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
   const [modalOpen, setModalOpen] = useState(false);
+  const [editingPlace, setEditingPlace] = useState<Place | null>(null);
 
   // Place to Itinerary modal
   const [placeToSchedule, setPlaceToSchedule] = useState<Place | null>(null);
@@ -59,29 +60,62 @@ export const PlacesPage: React.FC = () => {
     statusFilter === 'ALL' ? true : pl.visit_status === statusFilter
   );
 
+  const openCreatePlaceModal = () => {
+    setEditingPlace(null);
+    setName('');
+    setCategory('Attraction');
+    setAddress('');
+    setEstimatedCost('');
+    setRating('5');
+    setVisitStatus('Want to Visit');
+    setNotes('');
+    setModalOpen(true);
+  };
+
+  const openEditPlaceModal = (pl: Place) => {
+    setEditingPlace(pl);
+    setName(pl.name);
+    setCategory(pl.category);
+    setAddress(pl.address || '');
+    setEstimatedCost(pl.estimated_cost !== null ? String(pl.estimated_cost) : '');
+    setRating(pl.rating !== null ? String(pl.rating) : '5');
+    setVisitStatus(pl.visit_status);
+    setNotes(pl.notes || '');
+    setModalOpen(true);
+  };
+
   const handleSavePlace = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      await createPlace({
-        trip_id: activeTrip.id,
+      const payload = {
         name: name.trim(),
         category,
         address: address.trim() || null,
-        latitude: null,
-        longitude: null,
-        image_url: null,
         estimated_cost: estimatedCost ? Number(estimatedCost) : null,
-        currency: activeTrip.currency,
         rating: rating ? Number(rating) : null,
         notes: notes.trim() || null,
         visit_status: visitStatus,
-      });
+      };
+      if (editingPlace) {
+        await updatePlace(editingPlace.id, payload);
+        notify(lang === 'he' ? 'המקום עודכן בהצלחה!' : 'Place updated!', 'success');
+      } else {
+        await createPlace({
+          trip_id: activeTrip.id,
+          ...payload,
+          latitude: null,
+          longitude: null,
+          image_url: null,
+          currency: activeTrip.currency,
+        });
+        notify(lang === 'he' ? 'המקום נשמר ברשימה!' : 'Place saved to wishlist!', 'success');
+      }
       setModalOpen(false);
+      setEditingPlace(null);
       setName('');
       setAddress('');
       setEstimatedCost('');
       setNotes('');
-      notify(lang === 'he' ? 'המקום נשמר ברשימה!' : 'Place saved to wishlist!', 'success');
     } catch (err) {
       handleError(err);
     }
@@ -94,7 +128,7 @@ export const PlacesPage: React.FC = () => {
           <h1 className="text-2xl font-bold text-navy">{t.places.title}</h1>
           <p className="text-xs text-navy/65">{activeTrip.name}</p>
         </div>
-        <Button onClick={() => setModalOpen(true)}>
+        <Button onClick={openCreatePlaceModal}>
           <Plus className="w-4 h-4" />
           <span>{t.places.addPlace}</span>
         </Button>
@@ -195,25 +229,46 @@ export const PlacesPage: React.FC = () => {
                   <CalendarPlus className="w-3.5 h-3.5" />
                   <span>{t.places.sendToItinerary}</span>
                 </Button>
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  className="text-red-600"
-                  onClick={() => deletePlace(pl.id)}
-                >
-                  <Trash2 className="w-4 h-4" />
-                </Button>
+                <div className="flex items-center gap-1">
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="text-navy/70"
+                    onClick={() => openEditPlaceModal(pl)}
+                    title={t.common.edit}
+                  >
+                    <Pencil className="w-4 h-4" />
+                  </Button>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="text-red-600"
+                    onClick={() => deletePlace(pl.id)}
+                    title={t.common.delete}
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </Button>
+                </div>
               </div>
             </Card>
           ))}
         </div>
       )}
 
-      {/* Create Place Modal */}
+      {/* Create / Edit Place Modal */}
       <ModalDrawer
         open={modalOpen}
-        onClose={() => setModalOpen(false)}
-        title={t.places.addPlace}
+        onClose={() => {
+          setModalOpen(false);
+          setEditingPlace(null);
+        }}
+        title={
+          editingPlace
+            ? lang === 'he'
+              ? 'עריכת מקום'
+              : 'Edit Place'
+            : t.places.addPlace
+        }
       >
         <form onSubmit={handleSavePlace} className="space-y-3.5">
           <Input

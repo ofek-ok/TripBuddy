@@ -9,9 +9,11 @@ import { CurrencyCode } from '@/types/database.types';
 import {
   Check,
   Copy,
+  DoorOpen,
   Globe,
   HeartHandshake,
   KeyRound,
+  Lock,
   LogOut,
   Plus,
   Sparkles,
@@ -27,9 +29,11 @@ export const AuthWorkspacePage: React.FC<{ manageMode?: boolean }> = ({ manageMo
     signIn,
     signUp,
     signOut,
+    changePassword,
     createCoupleWorkspace,
     updateCoupleWorkspace,
     joinCoupleWorkspace,
+    leaveCoupleWorkspace,
     addPartnerProfile,
   } = useAppStore();
   const { notify, handleError } = useToast();
@@ -55,6 +59,11 @@ export const AuthWorkspacePage: React.FC<{ manageMode?: boolean }> = ({ manageMo
   // Partner addition in workspace settings
   const [partnerName, setPartnerName] = useState('');
   const [partnerEmail, setPartnerEmail] = useState('');
+
+  // Change password state
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmNewPassword, setConfirmNewPassword] = useState('');
 
   const handleAuthSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -432,6 +441,114 @@ export const AuthWorkspacePage: React.FC<{ manageMode?: boolean }> = ({ manageMo
             </Button>
           </form>
         )}
+      </Card>
+
+      {/* Change Password Card */}
+      <Card className="space-y-3">
+        <div className="flex items-center gap-2">
+          <Lock className="w-4 h-4 text-sand" />
+          <h3 className="font-bold text-base text-navy">
+            {lang === 'he' ? 'שינוי סיסמה' : 'Change Password'}
+          </h3>
+        </div>
+        <form
+          onSubmit={async (e) => {
+            e.preventDefault();
+            if (newPassword !== confirmNewPassword) {
+              notify(
+                lang === 'he' ? 'הסיסמאות החדשות אינן תואמות' : 'New passwords do not match',
+                'error'
+              );
+              return;
+            }
+            try {
+              await changePassword(currentPassword, newPassword);
+              setCurrentPassword('');
+              setNewPassword('');
+              setConfirmNewPassword('');
+              notify(
+                lang === 'he' ? 'הסיסמה עודכנה בהצלחה!' : 'Password updated successfully!',
+                'success'
+              );
+            } catch (err) {
+              handleError(err);
+            }
+          }}
+          className="space-y-3"
+        >
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <Input
+              type="password"
+              label={lang === 'he' ? 'סיסמה נוכחית' : 'Current Password'}
+              value={currentPassword}
+              onChange={(e) => setCurrentPassword(e.target.value)}
+              required
+            />
+            <Input
+              type="password"
+              minLength={6}
+              label={lang === 'he' ? 'סיסמה חדשה' : 'New Password'}
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              required
+            />
+            <Input
+              type="password"
+              minLength={6}
+              label={lang === 'he' ? 'אימות סיסמה חדשה' : 'Confirm New Password'}
+              value={confirmNewPassword}
+              onChange={(e) => setConfirmNewPassword(e.target.value)}
+              required
+            />
+          </div>
+          <Button type="submit" size="sm" variant="secondary">
+            <Lock className="w-3.5 h-3.5" />
+            <span>{lang === 'he' ? 'עדכון סיסמה' : 'Update Password'}</span>
+          </Button>
+        </form>
+      </Card>
+
+      {/* Leave Workspace Card */}
+      <Card className="space-y-3 border-red-200 bg-red-50/40">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <h3 className="font-bold text-sm text-red-700 flex items-center gap-1.5">
+              <DoorOpen className="w-4 h-4" />
+              <span>{lang === 'he' ? 'עזיבת סביבת העבודה' : 'Leave Workspace'}</span>
+            </h3>
+            <p className="text-xs text-red-700/75 mt-0.5">
+              {lang === 'he'
+                ? 'לאחר העזיבה תוכלו להקים סביבת עבודה חדשה או להצטרף לסביבה אחרת עם קוד הזמנה.'
+                : 'After leaving, you can create a new workspace or join another one using an invite code.'}
+            </p>
+          </div>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="border-red-300 text-red-700 hover:bg-red-100 shrink-0"
+            onClick={async () => {
+              const confirmed = window.confirm(
+                lang === 'he'
+                  ? 'האם לעזוב את סביבת העבודה הנוכחית?'
+                  : 'Are you sure you want to leave this workspace?'
+              );
+              if (!confirmed) return;
+              try {
+                await leaveCoupleWorkspace();
+                notify(
+                  lang === 'he' ? 'עזבת את סביבת העבודה' : 'You left the workspace',
+                  'success'
+                );
+              } catch (err) {
+                handleError(err);
+              }
+            }}
+          >
+            <DoorOpen className="w-3.5 h-3.5" />
+            <span>{lang === 'he' ? 'עזיבת סביבה' : 'Leave Workspace'}</span>
+          </Button>
+        </div>
       </Card>
     </div>
   );

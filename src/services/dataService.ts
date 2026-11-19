@@ -1,15 +1,12 @@
 // ============================================================================
-// TRAVEL COMPANION - Unified Data Access Service (Supabase + Offline-Ready Persistence)
-// Strictly implements all 17 PostgreSQL tables, triggers, and Storage signed URLs
+// TRIPBUDDY - Relational Store Types & Upload Validation Helpers
 // ============================================================================
 
-import { isSupabaseConfigured, supabase } from '@/lib/supabase/client';
 import {
   BudgetCategory,
   BudgetCategoryType,
   Couple,
   CoupleMember,
-  CurrencyCode,
   Expense,
   ItineraryDay,
   ItineraryEvent,
@@ -128,68 +125,6 @@ export function buildTripDaysAndCategories(trip: Trip): {
 
   return { days, categories };
 }
-
-export const storageService = {
-  async uploadPrivateFile(
-    bucket: 'documents-vault' | 'trip-memories',
-    coupleId: string,
-    tripId: string,
-    file: File
-  ): Promise<string> {
-    validateUploadFile(file);
-    const sanitizedName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
-    const filePath = `${coupleId}/${tripId}/${crypto.randomUUID()}-${sanitizedName}`;
-
-    if (isSupabaseConfigured) {
-      const { error } = await supabase.storage.from(bucket).upload(filePath, file, {
-        upsert: false,
-        contentType: file.type,
-      });
-      if (error) throw error;
-      return filePath;
-    }
-
-    // Local secure blob storage fallback when running before cloud keys are entered
-    const dataUrl = await new Promise<string>((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(String(reader.result));
-      reader.onerror = () => reject(new Error('Failed to read file'));
-      reader.readAsDataURL(file);
-    });
-    window.localStorage.setItem(`tc_vault_blob_${filePath}`, dataUrl);
-    return filePath;
-  },
-
-  async createSignedUrl(
-    bucket: 'documents-vault' | 'trip-memories',
-    filePath: string,
-    expiresInSeconds = 120
-  ): Promise<string> {
-    if (isSupabaseConfigured) {
-      const { data, error } = await supabase.storage
-        .from(bucket)
-        .createSignedUrl(filePath, expiresInSeconds);
-      if (error || !data?.signedUrl) {
-        throw error || new Error('Could not generate signed URL');
-      }
-      return data.signedUrl;
-    }
-
-    const blobData = window.localStorage.getItem(`tc_vault_blob_${filePath}`);
-    if (!blobData) {
-      throw new Error('Document file not found in private vault');
-    }
-    return blobData;
-  },
-
-  async deletePrivateFile(bucket: 'documents-vault' | 'trip-memories', filePath: string) {
-    if (isSupabaseConfigured) {
-      await supabase.storage.from(bucket).remove([filePath]);
-    } else {
-      window.localStorage.removeItem(`tc_vault_blob_${filePath}`);
-    }
-  },
-};
 
 export type RelationalStoreState = {
   profiles: Profile[];

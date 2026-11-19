@@ -20,6 +20,7 @@ import {
 } from '@/types/database.types';
 import { EMPTY_RELATIONAL_STORE, RelationalStoreState, validateUploadFile } from '@/services/dataService';
 import { apiRequest, getAuthToken, setAuthToken } from '@/lib/api/client';
+import { compressImageIfNeeded } from '@/lib/utils/imageCompression';
 import { useToast } from '@/lib/errors/errorHandler';
 
 const ACTIVE_TRIP_KEY = 'tb_active_trip_id';
@@ -38,9 +39,11 @@ interface AppStoreContextValue {
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (email: string, password: string, fullName: string) => Promise<void>;
   signOut: () => Promise<void>;
+  changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
   createCoupleWorkspace: (name: string, defaultCurrency: CurrencyCode) => Promise<void>;
   updateCoupleWorkspace: (name: string) => Promise<void>;
   joinCoupleWorkspace: (inviteCode: string) => Promise<void>;
+  leaveCoupleWorkspace: () => Promise<void>;
   addPartnerProfile: (partnerName: string, partnerEmail?: string) => Promise<void>;
 
   // Trips CRUD
@@ -119,6 +122,17 @@ interface AppStoreContextValue {
 
   createMemory: (
     input: Omit<Memory, 'id' | 'image_path' | 'created_by' | 'created_at' | 'updated_at'>,
+    imageFile?: File | null
+  ) => Promise<void>;
+  updateMemory: (
+    memoryId: string,
+    patch: {
+      title: string;
+      description: string | null;
+      location: string | null;
+      rating: number | null;
+      memory_date: string;
+    },
     imageFile?: File | null
   ) => Promise<void>;
   getMemoryImageUrl: (imagePath: string) => Promise<string>;
@@ -294,6 +308,13 @@ export const AppStoreProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setDb(EMPTY_RELATIONAL_STORE);
   };
 
+  const changePassword = async (currentPassword: string, newPassword: string) => {
+    await apiRequest('/api/auth/change-password', {
+      method: 'POST',
+      body: JSON.stringify({ currentPassword, newPassword }),
+    });
+  };
+
   const createCoupleWorkspace = async (name: string, defaultCurrency: CurrencyCode) => {
     await apiRequest('/api/couples', {
       method: 'POST',
@@ -315,6 +336,11 @@ export const AppStoreProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       method: 'POST',
       body: JSON.stringify({ inviteCode }),
     });
+    await fetchWorkspace(true);
+  };
+
+  const leaveCoupleWorkspace = async () => {
+    await apiRequest('/api/couples/leave', { method: 'POST' });
     await fetchWorkspace(true);
   };
 
@@ -351,8 +377,9 @@ export const AppStoreProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const uploadTripCover = async (tripId: string, file: File) => {
     validateUploadFile(file);
+    const compressed = await compressImageIfNeeded(file);
     const form = new FormData();
-    form.append('image', file);
+    form.append('image', compressed);
     await apiRequest(`/api/trips/${tripId}/cover`, {
       method: 'POST',
       body: form,
@@ -600,8 +627,9 @@ export const AppStoreProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   ): Promise<TripDocument> => {
     if (!activeTrip) throw new Error('No active trip selected');
     validateUploadFile(file);
+    const compressed = await compressImageIfNeeded(file);
     const form = new FormData();
-    form.append('file', file);
+    form.append('file', compressed);
     form.append('trip_id', activeTrip.id);
     form.append('name', meta.name);
     form.append('category', meta.category);
@@ -817,9 +845,36 @@ export const AppStoreProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     if (input.memory_date) form.append('memory_date', input.memory_date);
     if (imageFile) {
       validateUploadFile(imageFile);
-      form.append('image', imageFile);
+      const compressed = await compressImageIfNeeded(imageFile);
+      form.append('image', compressed);
     }
     await apiRequest('/api/memories', { method: 'POST', body: form });
+    await fetchWorkspace(true);
+  };
+
+  const updateMemory = async (
+    memoryId: string,
+    patch: {
+      title: string;
+      description: string | null;
+      location: string | null;
+      rating: number | null;
+      memory_date: string;
+    },
+    imageFile?: File | null
+  ) => {
+    const form = new FormData();
+    form.append('title', patch.title);
+    form.append('description', patch.description ?? '');
+    form.append('location', patch.location ?? '');
+    if (patch.rating !== null) form.append('rating', String(patch.rating));
+    form.append('memory_date', patch.memory_date);
+    if (imageFile) {
+      validateUploadFile(imageFile);
+      const compressed = await compressImageIfNeeded(imageFile);
+      form.append('image', compressed);
+    }
+    await apiRequest(`/api/memories/${memoryId}`, { method: 'PATCH', body: form });
     await fetchWorkspace(true);
   };
 
@@ -850,9 +905,11 @@ export const AppStoreProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         signIn,
         signUp,
         signOut,
+        changePassword,
         createCoupleWorkspace,
         updateCoupleWorkspace,
         joinCoupleWorkspace,
+        leaveCoupleWorkspace,
         addPartnerProfile,
         createTrip,
         updateTrip,
@@ -904,6 +961,7 @@ export const AppStoreProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         deletePlace,
         convertPlaceToItineraryEvent,
         createMemory,
+        updateMemory,
         getMemoryImageUrl,
         deleteMemory,
       }}

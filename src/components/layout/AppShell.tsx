@@ -66,7 +66,7 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
           <div className="flex items-center gap-3">
             <AppLogo size="md" onClick={() => navigate('/')} />
             <div>
-              <h1 className="font-bold text-base tracking-tight">{t.appName}</h1>
+              <span className="block font-bold text-base tracking-tight">{t.appName}</span>
               <p className="text-xs text-ivory/70">{ currentCouple?.name || t.tagline }</p>
             </div>
           </div>
