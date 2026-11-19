@@ -259,60 +259,14 @@ export const ItineraryPage: React.FC = () => {
   };
 
   return (
-    <div className="relative space-y-5">
-      {/* Full-Screen Fixed Trip Cover Background (Crisp & Luminous behind Frosted Glass Cards) */}
-      {activeTrip.cover_image && (
-        <div
-          aria-hidden="true"
-          className="fixed inset-0 md:ms-64 lg:ms-72 pointer-events-none z-0 overflow-hidden"
-        >
-          <img
-            src={activeTrip.cover_image}
-            alt=""
-            className="w-full h-full object-cover object-center opacity-50 scale-[1.02]"
-            onError={(e) => {
-              (e.currentTarget as HTMLImageElement).style.display = 'none';
-            }}
-          />
-          <div className="absolute inset-0 bg-gradient-to-b from-ivory/25 via-ivory/55 to-ivory/82" />
-        </div>
-      )}
-
-      {/* Cinematic Cover Photo Header Banner */}
-      <div className="relative z-10 space-y-5">
-      <div className="relative rounded-3xl overflow-hidden shadow-xl bg-gradient-to-br from-navy via-navy-light to-sand-dark text-white min-h-[220px] sm:min-h-[260px] flex flex-col justify-end p-5 sm:p-7 border border-white/25">
-        {activeTrip.cover_image && (
-          <>
-            <img
-              src={activeTrip.cover_image}
-              alt={activeTrip.name}
-              className="absolute inset-0 w-full h-full object-cover"
-              onError={(e) => {
-                (e.currentTarget as HTMLImageElement).style.display = 'none';
-              }}
-            />
-            <div className="absolute inset-0 bg-gradient-to-t from-navy/88 via-navy/20 to-transparent" />
-          </>
-        )}
-        <div className="relative z-10 flex flex-wrap items-end justify-between gap-2">
-          <div>
-            <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight drop-shadow-sm">
-              {t.itinerary.title}
-            </h1>
-            <p className="text-xs sm:text-sm text-white/90 mt-0.5 flex items-center gap-1.5">
-              <MapPin className="w-3.5 h-3.5 text-sand-light shrink-0" />
-              <span>
-                {activeTrip.name} • {activeDays.length}{' '}
-                {lang === 'he' ? 'ימים • לו״ז לפי שעות' : 'days • Hourly Timeline'}
-              </span>
-            </p>
-          </div>
-          {selectedDay?.location && (
-            <span className="px-3 py-1 rounded-full bg-navy/55 backdrop-blur-md border border-white/20 text-xs font-semibold text-white">
-              {selectedDay.location}
-            </span>
-          )}
-        </div>
+    <div className="space-y-5">
+      {/* Header */}
+      <div>
+        <h1 className="text-2xl font-bold text-navy">{t.itinerary.title}</h1>
+        <p className="text-xs text-navy/65">
+          {activeTrip.name} • {activeDays.length}{' '}
+          {lang === 'he' ? 'ימים • לו״ז מסודר לפי שעות' : 'days • Hourly Timeline'}
+        </p>
       </div>
 
       {/* Sticky Action Bar (Add Day + Add Activity stay pinned while scrolling) */}
@@ -809,7 +763,6 @@ export const ItineraryPage: React.FC = () => {
           </div>
         </div>
       </ModalDrawer>
-      </div>
     </div>
   );
 };

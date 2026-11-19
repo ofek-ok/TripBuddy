@@ -101,27 +101,8 @@ export const DashboardPage: React.FC = () => {
     .slice(0, 5);
 
   return (
-    <div className="relative space-y-5">
-      {/* Full-Screen Fixed Trip Cover Background (Crisp & Luminous behind Frosted Glass Cards) */}
-      {activeTrip.cover_image && (
-        <div
-          aria-hidden="true"
-          className="fixed inset-0 md:ms-64 lg:ms-72 pointer-events-none z-0 overflow-hidden"
-        >
-          <img
-            src={activeTrip.cover_image}
-            alt=""
-            className="w-full h-full object-cover object-center opacity-55 scale-[1.02]"
-            onError={(e) => {
-              (e.currentTarget as HTMLImageElement).style.display = 'none';
-            }}
-          />
-          <div className="absolute inset-0 bg-gradient-to-b from-ivory/25 via-ivory/50 to-ivory/80" />
-        </div>
-      )}
-
+    <div className="space-y-5">
       {/* Editorial Magazine Hero Card — Showcases Vivid Trip Cover Photo */}
-      <div className="relative z-10 space-y-5">
       <div className="relative rounded-3xl text-white shadow-xl overflow-hidden bg-gradient-to-br from-navy via-navy-light to-sand-dark min-h-[400px] sm:min-h-[450px] flex flex-col justify-between p-5 sm:p-7 border border-white/25">
         {activeTrip.cover_image && (
           <>
@@ -463,7 +444,6 @@ export const DashboardPage: React.FC = () => {
           </div>
         </Card>
       )}
-      </div>
     </div>
   );
 };
