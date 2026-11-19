@@ -256,15 +256,22 @@ export const ItineraryPage: React.FC = () => {
   return (
     <div className="space-y-5">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-navy">{t.itinerary.title}</h1>
-          <p className="text-xs text-navy/65">
-            {activeTrip.name} • {activeDays.length}{' '}
-            {lang === 'he' ? 'ימים • לו״ז מסודר לפי שעות' : 'days • Hourly Timeline'}
-          </p>
+      <div>
+        <h1 className="text-2xl font-bold text-navy">{t.itinerary.title}</h1>
+        <p className="text-xs text-navy/65">
+          {activeTrip.name} • {activeDays.length}{' '}
+          {lang === 'he' ? 'ימים • לו״ז מסודר לפי שעות' : 'days • Hourly Timeline'}
+        </p>
+      </div>
+
+      {/* Sticky Action Bar (Add Day + Add Activity stay pinned while scrolling) */}
+      <div className="sticky top-[62px] z-10 -mx-1 px-2.5 py-2 rounded-2xl bg-surface/90 backdrop-blur-md border border-sand/25 shadow-soft flex items-center justify-between gap-2">
+        <div className="text-xs font-bold text-navy/80 truncate ps-1">
+          {selectedDay
+            ? `${t.itinerary.day} ${selectedDay.day_number} • ${formatDate(selectedDay.date, lang)}`
+            : activeTrip.name}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 shrink-0">
           <Button variant="outline" size="sm" onClick={addDay}>
             <CalendarPlus className="w-4 h-4" />
             <span>{t.itinerary.addDay}</span>
