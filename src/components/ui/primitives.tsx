@@ -125,6 +125,7 @@ export const Input = React.forwardRef<
         <input
           ref={setRefs}
           type={type}
+          dir={type === 'date' ? 'ltr' : props.dir}
           value={value}
           onChange={onChange}
           disabled={disabled}

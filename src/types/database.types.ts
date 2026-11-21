@@ -245,6 +245,7 @@ export interface ShoppingItem {
   category: string | null;
   assigned_to: string | null;
   is_purchased: boolean;
+  sort_order?: number;
   notes: string | null;
   created_at: string;
   updated_at: string;
@@ -273,6 +274,8 @@ export interface PackingItem {
   quantity: number;
   assigned_to: string | null;
   is_packed: boolean;
+  pack_stage?: 0 | 1 | 2;
+  sort_order?: number;
   notes: string | null;
   created_at: string;
   updated_at: string;

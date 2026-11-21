@@ -22,6 +22,7 @@ import {
   CurrencyCode,
   EventCategory,
   EventStatus,
+  ItineraryDay,
   ItineraryEvent,
 } from '@/types/database.types';
 import {
@@ -62,6 +63,7 @@ export const ItineraryPage: React.FC = () => {
     activeEvents,
     updateDay,
     addDay,
+    addPreFlightDay,
     createEvent,
     updateEvent,
     deleteEvent,
@@ -243,14 +245,19 @@ export const ItineraryPage: React.FC = () => {
     }
   };
 
+  const getDayLabel = (day: ItineraryDay) => {
+    if (day.day_number <= 0) {
+      return lang === 'he' ? 'בארץ (לפני טיסה)' : 'Home (Pre-Flight)';
+    }
+    return `${t.itinerary.day} ${day.day_number}`;
+  };
+
   const getGoogleMapsUrl = (ev: ItineraryEvent) => {
     if (ev.latitude !== null && ev.longitude !== null) {
       return `https://www.google.com/maps/search/?api=1&query=${ev.latitude},${ev.longitude}`;
     }
-    const query = encodeURIComponent(
-      `${ev.title} ${ev.address || selectedDay?.location || activeTrip.destination}`
-    );
-    return `https://www.google.com/maps/search/?api=1&query=${query}`;
+    const queryText = ev.address?.trim() ? ev.address.trim() : ev.title.trim();
+    return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(queryText)}`;
   };
 
   const copyText = (txt: string) => {
@@ -269,14 +276,29 @@ export const ItineraryPage: React.FC = () => {
         </p>
       </div>
 
-      {/* Sticky Action Bar (Add Day + Add Activity stay pinned while scrolling) */}
-      <div className="sticky top-[62px] z-20 -mx-1 px-2.5 py-2 rounded-2xl bg-surface/92 backdrop-blur-md border border-sand/25 shadow-soft flex items-center justify-between gap-2">
+      {/* Sticky Action Bar (Add Pre-Flight Day + Add Day + Add Activity stay pinned while scrolling) */}
+      <div className="sticky top-[62px] z-20 -mx-1 px-2.5 py-2 rounded-2xl bg-surface/92 backdrop-blur-md border border-sand/25 shadow-soft flex flex-wrap items-center justify-between gap-2">
         <div className="text-xs font-bold text-navy/80 truncate ps-1">
           {selectedDay
-            ? `${t.itinerary.day} ${selectedDay.day_number} • ${formatDateWithWeekday(selectedDay.date, lang)}`
+            ? `${getDayLabel(selectedDay)} • ${formatDateWithWeekday(selectedDay.date, lang)}`
             : activeTrip.name}
         </div>
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex flex-wrap items-center gap-1.5 shrink-0">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-navy border border-navy/15 bg-ivory/70"
+            onClick={async () => {
+              await addPreFlightDay();
+              notify(
+                lang === 'he' ? 'נוסף יום התארגנות בארץ לפני הטיסה!' : 'Pre-flight home day added!',
+                'success'
+              );
+            }}
+          >
+            <CalendarPlus className="w-3.5 h-3.5 text-sand" />
+            <span>{lang === 'he' ? 'יום בארץ (לפני טיסה)' : 'Pre-Flight Day'}</span>
+          </Button>
           <Button variant="outline" size="sm" onClick={addDay}>
             <CalendarPlus className="w-4 h-4" />
             <span>{t.itinerary.addDay}</span>
@@ -305,7 +327,7 @@ export const ItineraryPage: React.FC = () => {
             >
               <div className="flex items-center justify-between gap-3">
                 <span className="text-xs font-bold">
-                  {t.itinerary.day} {day.day_number}
+                  {getDayLabel(day)}
                 </span>
                 <span
                   className={`text-[10px] px-1.5 py-0.5 rounded-full ${
@@ -333,7 +355,7 @@ export const ItineraryPage: React.FC = () => {
           <div className="space-y-1">
             <div className="flex flex-wrap items-center gap-2">
               <Badge variant="navy">
-                {t.itinerary.day} {selectedDay.day_number}
+                {getDayLabel(selectedDay)}
               </Badge>
               <span className="text-sm font-bold text-navy">
                 {formatDateWithWeekday(selectedDay.date, lang)}

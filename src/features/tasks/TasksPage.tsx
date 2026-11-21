@@ -37,16 +37,20 @@ export const TasksPage: React.FC = () => {
   const [editingTask, setEditingTask] = useState<TripTask | null>(null);
   const [searchParams, setSearchParams] = useSearchParams();
 
+  const getTodayStr = () => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  };
+
   useEffect(() => {
     if (searchParams.get('action') === 'new' && activeTrip) {
       setEditingTask(null);
       setTitle('');
       setDescription('');
       setAssignedTo('');
-      setDueDate(activeTrip.start_date);
+      setDueDate(getTodayStr());
       setPriority('Medium');
       setStatus('To Do');
-      setCategory('Preparation');
       setModalOpen(true);
       setSearchParams({}, { replace: true });
     }
@@ -56,10 +60,9 @@ export const TasksPage: React.FC = () => {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [assignedTo, setAssignedTo] = useState('');
-  const [dueDate, setDueDate] = useState('');
+  const [dueDate, setDueDate] = useState(() => getTodayStr());
   const [priority, setPriority] = useState<TaskPriority>('Medium');
   const [status, setStatus] = useState<TaskStatus>('To Do');
-  const [category, setCategory] = useState('General');
 
   const filteredTasks = useMemo(() => {
     return activeTasks.filter((tk) => {
@@ -82,10 +85,9 @@ export const TasksPage: React.FC = () => {
     setTitle('');
     setDescription('');
     setAssignedTo('');
-    setDueDate(activeTrip.start_date);
+    setDueDate(getTodayStr());
     setPriority('Medium');
     setStatus('To Do');
-    setCategory('Preparation');
     setModalOpen(true);
   };
 
@@ -94,10 +96,9 @@ export const TasksPage: React.FC = () => {
     setTitle(tk.title);
     setDescription(tk.description || '');
     setAssignedTo(tk.assigned_to || '');
-    setDueDate(tk.due_date || '');
+    setDueDate(tk.due_date || getTodayStr());
     setPriority(tk.priority);
     setStatus(tk.status);
-    setCategory(tk.category || 'General');
     setModalOpen(true);
   };
 
@@ -112,7 +113,7 @@ export const TasksPage: React.FC = () => {
         due_date: dueDate || null,
         priority,
         status,
-        category: category.trim() || 'General',
+        category: 'General',
       };
 
       if (editingTask) {
@@ -140,12 +141,17 @@ export const TasksPage: React.FC = () => {
 
   return (
     <div className="space-y-5">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-navy">{t.tasks.title}</h1>
-          <p className="text-xs text-navy/65">{activeTrip.name}</p>
-        </div>
-        <Button onClick={openCreateModal}>
+      <div>
+        <h1 className="text-2xl font-bold text-navy">{t.tasks.title}</h1>
+        <p className="text-xs text-navy/65">{activeTrip.name}</p>
+      </div>
+
+      {/* Sticky Action Bar */}
+      <div className="sticky top-[62px] z-20 -mx-1 px-2.5 py-2 rounded-2xl bg-surface/92 backdrop-blur-md border border-sand/25 shadow-soft flex items-center justify-between gap-2">
+        <span className="text-xs font-bold text-navy/75 ps-1">
+          {filteredTasks.length} {lang === 'he' ? 'משימות' : 'tasks'}
+        </span>
+        <Button size="sm" onClick={openCreateModal}>
           <Plus className="w-4 h-4" />
           <span>{t.tasks.newTask}</span>
         </Button>
@@ -317,12 +323,6 @@ export const TasksPage: React.FC = () => {
               onChange={(e) => setDueDate(e.target.value)}
             />
           </div>
-
-          <Input
-            label={t.common.category}
-            value={category}
-            onChange={(e) => setCategory(e.target.value)}
-          />
 
           <Textarea
             label={t.common.notes}

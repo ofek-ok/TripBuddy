@@ -216,6 +216,27 @@ app.post('/api/auth/change-password', requireAuth, async (req: AuthenticatedRequ
   }
 });
 
+// Update ONLY the authenticated user's own profile display name
+app.patch('/api/profile', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { fullName } = req.body as { fullName?: string };
+    const cleanName = (fullName || '').trim();
+    if (!cleanName || cleanName.length < 1) {
+      res.status(400).json({ error: 'Display name is required' });
+      return;
+    }
+    const [updated] = await query(
+      'UPDATE profiles SET full_name = $1, updated_at = now() WHERE user_id = $2 RETURNING *',
+      [cleanName, req.userId!]
+    );
+    const coupleId = await getUserCoupleId(req.userId!);
+    if (coupleId) broadcastCoupleUpdate(coupleId, 'profile_updated');
+    res.json(updated);
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
 // ============================================================================
 // REALTIME SSE STREAM (Per Couple Workspace)
 // ============================================================================
@@ -1464,16 +1485,47 @@ app.post('/api/shopping-items', requireAuth, async (req: AuthenticatedRequest, r
     const [list] = await query<{ trip_id: string }>('SELECT trip_id FROM shopping_lists WHERE id = $1', [b.list_id]);
     if (!list) { res.status(404).json({ error: 'List not found' }); return; }
     const coupleId = await assertTripAccess(req.userId!, list.trip_id);
+    const [maxRow] = await query<{ max_order: number }>(
+      'SELECT COALESCE(MAX(sort_order), 0)::int AS max_order FROM shopping_items WHERE list_id = $1',
+      [b.list_id]
+    );
+    const nextOrder = b.sort_order ?? (maxRow?.max_order || 0) + 1;
     const [item] = await query(
-      `INSERT INTO shopping_items (list_id, item_name, quantity, estimated_price, category, assigned_to, is_purchased, notes)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
+      `INSERT INTO shopping_items (list_id, item_name, quantity, estimated_price, category, assigned_to, is_purchased, sort_order, notes)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
       [
         b.list_id, b.item_name, b.quantity || 1, b.estimated_price ?? null,
-        b.category || null, b.assigned_to || null, Boolean(b.is_purchased), b.notes || null,
+        b.category || null, b.assigned_to || null, Boolean(b.is_purchased), nextOrder, b.notes || null,
       ]
     );
     broadcastCoupleUpdate(coupleId, 'shopping_item_created');
     res.status(201).json(item);
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+app.post('/api/shopping-items/reorder', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { orderedIds } = req.body as { orderedIds: string[] };
+    if (!Array.isArray(orderedIds) || orderedIds.length === 0) {
+      res.status(400).json({ error: 'orderedIds array is required' });
+      return;
+    }
+    const [first] = await query<{ trip_id: string }>(
+      `SELECT sl.trip_id FROM shopping_items si JOIN shopping_lists sl ON sl.id = si.list_id WHERE si.id = $1`,
+      [orderedIds[0]]
+    );
+    if (!first) { res.status(404).json({ error: 'Item not found' }); return; }
+    const coupleId = await assertTripAccess(req.userId!, first.trip_id);
+    for (let i = 0; i < orderedIds.length; i++) {
+      await query('UPDATE shopping_items SET sort_order = $1, updated_at = now() WHERE id = $2', [
+        i + 1,
+        orderedIds[i],
+      ]);
+    }
+    broadcastCoupleUpdate(coupleId, 'shopping_items_reordered');
+    res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: (err as Error).message });
   }
@@ -1492,11 +1544,23 @@ app.patch('/api/shopping-items/:id', requireAuth, async (req: AuthenticatedReque
       `UPDATE shopping_items SET
         item_name = COALESCE($1, item_name),
         quantity = COALESCE($2, quantity),
-        estimated_price = COALESCE($3, estimated_price),
-        is_purchased = COALESCE($4, is_purchased),
+        estimated_price = CASE WHEN $3::boolean THEN $4 ELSE estimated_price END,
+        assigned_to = CASE WHEN $5::boolean THEN $6 ELSE assigned_to END,
+        is_purchased = COALESCE($7, is_purchased),
+        sort_order = COALESCE($8, sort_order),
         updated_at = now()
-      WHERE id = $5 RETURNING *`,
-      [b.item_name ?? null, b.quantity ?? null, b.estimated_price ?? null, b.is_purchased ?? null, req.params.id]
+      WHERE id = $9 RETURNING *`,
+      [
+        b.item_name ?? null,
+        b.quantity ?? null,
+        b.estimated_price !== undefined,
+        b.estimated_price ?? null,
+        b.assigned_to !== undefined,
+        b.assigned_to ?? null,
+        b.is_purchased ?? null,
+        b.sort_order ?? null,
+        req.params.id,
+      ]
     );
     broadcastCoupleUpdate(coupleId, 'shopping_item_updated');
     res.json(updated);
@@ -1528,16 +1592,47 @@ app.post('/api/packing-items', requireAuth, async (req: AuthenticatedRequest, re
   try {
     const b = req.body;
     const coupleId = await assertTripAccess(req.userId!, b.trip_id);
+    const [maxRow] = await query<{ max_order: number }>(
+      'SELECT COALESCE(MAX(sort_order), 0)::int AS max_order FROM packing_items WHERE trip_id = $1',
+      [b.trip_id]
+    );
+    const nextOrder = b.sort_order ?? (maxRow?.max_order || 0) + 1;
+    const packStage = b.pack_stage !== undefined ? Number(b.pack_stage) : b.is_packed ? 2 : 0;
     const [item] = await query(
-      `INSERT INTO packing_items (trip_id, item_name, category, quantity, assigned_to, is_packed, notes)
-       VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
+      `INSERT INTO packing_items (trip_id, item_name, category, quantity, assigned_to, is_packed, pack_stage, sort_order, notes)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
       [
-        b.trip_id, b.item_name, b.category || 'Clothing', b.quantity || 1,
-        b.assigned_to || null, Boolean(b.is_packed), b.notes || null,
+        b.trip_id, b.item_name, b.category || 'כבודה כללית', b.quantity || 1,
+        b.assigned_to || null, packStage === 2, packStage, nextOrder, b.notes || null,
       ]
     );
     broadcastCoupleUpdate(coupleId, 'packing_item_created');
     res.status(201).json(item);
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+app.post('/api/packing-items/reorder', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { orderedIds } = req.body as { orderedIds: string[] };
+    if (!Array.isArray(orderedIds) || orderedIds.length === 0) {
+      res.status(400).json({ error: 'orderedIds array is required' });
+      return;
+    }
+    const [first] = await query<{ trip_id: string }>('SELECT trip_id FROM packing_items WHERE id = $1', [
+      orderedIds[0],
+    ]);
+    if (!first) { res.status(404).json({ error: 'Item not found' }); return; }
+    const coupleId = await assertTripAccess(req.userId!, first.trip_id);
+    for (let i = 0; i < orderedIds.length; i++) {
+      await query('UPDATE packing_items SET sort_order = $1, updated_at = now() WHERE id = $2', [
+        i + 1,
+        orderedIds[i],
+      ]);
+    }
+    broadcastCoupleUpdate(coupleId, 'packing_items_reordered');
+    res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: (err as Error).message });
   }
@@ -1549,16 +1644,38 @@ app.patch('/api/packing-items/:id', requireAuth, async (req: AuthenticatedReques
     if (!row) { res.status(404).json({ error: 'Item not found' }); return; }
     const coupleId = await assertTripAccess(req.userId!, row.trip_id);
     const b = req.body;
+    const nextPackStage =
+      b.pack_stage !== undefined
+        ? Number(b.pack_stage)
+        : b.is_packed !== undefined
+          ? b.is_packed
+            ? 2
+            : 0
+          : null;
+    const nextIsPacked =
+      nextPackStage !== null ? nextPackStage === 2 : b.is_packed ?? null;
     const [updated] = await query(
       `UPDATE packing_items SET
         item_name = COALESCE($1, item_name),
         category = COALESCE($2, category),
         quantity = COALESCE($3, quantity),
-        assigned_to = COALESCE($4, assigned_to),
-        is_packed = COALESCE($5, is_packed),
+        assigned_to = CASE WHEN $4::boolean THEN $5 ELSE assigned_to END,
+        is_packed = COALESCE($6, is_packed),
+        pack_stage = COALESCE($7, pack_stage),
+        sort_order = COALESCE($8, sort_order),
         updated_at = now()
-      WHERE id = $6 RETURNING *`,
-      [b.item_name ?? null, b.category ?? null, b.quantity ?? null, b.assigned_to ?? null, b.is_packed ?? null, req.params.id]
+      WHERE id = $9 RETURNING *`,
+      [
+        b.item_name ?? null,
+        b.category ?? null,
+        b.quantity ?? null,
+        b.assigned_to !== undefined,
+        b.assigned_to ?? null,
+        nextIsPacked,
+        nextPackStage,
+        b.sort_order ?? null,
+        req.params.id,
+      ]
     );
     broadcastCoupleUpdate(coupleId, 'packing_item_updated');
     res.json(updated);

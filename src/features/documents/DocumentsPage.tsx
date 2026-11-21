@@ -153,17 +153,20 @@ export const DocumentsPage: React.FC = () => {
   return (
     <div className="space-y-5">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div>
-          <div className="flex items-center gap-2">
-            <h1 className="text-2xl font-bold text-navy">{t.documents.title}</h1>
-          </div>
-          <div className="flex items-center gap-1.5 text-xs text-sage-dark font-semibold mt-0.5">
-            <ShieldCheck className="w-4 h-4" />
-            <span>{t.documents.securityBadge}</span>
-          </div>
+      <div>
+        <h1 className="text-2xl font-bold text-navy">{t.documents.title}</h1>
+        <div className="flex items-center gap-1.5 text-xs text-sage-dark font-semibold mt-0.5">
+          <ShieldCheck className="w-4 h-4" />
+          <span>{t.documents.securityBadge}</span>
         </div>
-        <Button onClick={() => setUploadOpen(true)}>
+      </div>
+
+      {/* Sticky Action Bar */}
+      <div className="sticky top-[62px] z-20 -mx-1 px-2.5 py-2 rounded-2xl bg-surface/92 backdrop-blur-md border border-sand/25 shadow-soft flex items-center justify-between gap-2">
+        <span className="text-xs font-bold text-navy/75 ps-1">
+          {filteredDocs.length} {lang === 'he' ? 'מסמכים בכספת' : 'documents'}
+        </span>
+        <Button size="sm" onClick={() => setUploadOpen(true)}>
           <Upload className="w-4 h-4" />
           <span>{t.documents.uploadDoc}</span>
         </Button>

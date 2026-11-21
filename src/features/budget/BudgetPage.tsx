@@ -387,17 +387,22 @@ export const BudgetPage: React.FC = () => {
   return (
     <div className="space-y-5">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-navy">{t.budget.title}</h1>
-          <p className="text-xs text-navy/65">
-            {activeTrip.name} • {t.common.currency}: {activeTrip.currency}
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
+      <div>
+        <h1 className="text-2xl font-bold text-navy">{t.budget.title}</h1>
+        <p className="text-xs text-navy/65">
+          {activeTrip.name} • {t.common.currency}: {activeTrip.currency}
+        </p>
+      </div>
+
+      {/* Sticky Action Bar */}
+      <div className="sticky top-[62px] z-20 -mx-1 px-2.5 py-2 rounded-2xl bg-surface/92 backdrop-blur-md border border-sand/25 shadow-soft flex items-center justify-between gap-2">
+        <span className="text-xs font-bold text-navy/75 truncate ps-1">
+          {formatCurrency(totalActual, activeTrip.currency, lang)} / {formatCurrency(activeTrip.planned_budget, activeTrip.currency, lang)}
+        </span>
+        <div className="flex items-center gap-2 shrink-0">
           <Button variant="outline" size="sm" onClick={() => setAllocationsOpen(true)}>
             <SlidersHorizontal className="w-4 h-4" />
-            <span>{t.budget.editAllocations}</span>
+            <span className="hidden sm:inline">{t.budget.editAllocations}</span>
           </Button>
           <Button size="sm" onClick={openCreateExpense}>
             <Plus className="w-4 h-4" />

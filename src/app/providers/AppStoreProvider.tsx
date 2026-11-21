@@ -39,6 +39,7 @@ interface AppStoreContextValue {
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (email: string, password: string, fullName: string) => Promise<void>;
   signOut: () => Promise<void>;
+  updateProfileName: (fullName: string) => Promise<void>;
   changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
   createCoupleWorkspace: (name: string, defaultCurrency: CurrencyCode) => Promise<void>;
   updateCoupleWorkspace: (name: string) => Promise<void>;
@@ -70,6 +71,7 @@ interface AppStoreContextValue {
   // Itinerary actions
   updateDay: (dayId: string, patch: Partial<ItineraryDay>) => Promise<void>;
   addDay: () => Promise<void>;
+  addPreFlightDay: () => Promise<void>;
   createEvent: (input: Omit<ItineraryEvent, 'id' | 'created_at' | 'updated_at' | 'sort_order'>) => Promise<void>;
   updateEvent: (eventId: string, patch: Partial<ItineraryEvent>) => Promise<void>;
   deleteEvent: (eventId: string) => Promise<void>;
@@ -106,10 +108,12 @@ interface AppStoreContextValue {
   createShoppingItem: (input: Omit<ShoppingItem, 'id' | 'created_at' | 'updated_at'>) => Promise<void>;
   updateShoppingItem: (itemId: string, patch: Partial<ShoppingItem>) => Promise<void>;
   deleteShoppingItem: (itemId: string) => Promise<void>;
+  reorderShoppingItems: (orderedIds: string[]) => Promise<void>;
 
   createPackingItem: (input: Omit<PackingItem, 'id' | 'created_at' | 'updated_at'>) => Promise<void>;
   updatePackingItem: (itemId: string, patch: Partial<PackingItem>) => Promise<void>;
   deletePackingItem: (itemId: string) => Promise<void>;
+  reorderPackingItems: (orderedIds: string[]) => Promise<void>;
   saveCurrentPackingAsTemplate: (templateName: string) => Promise<void>;
   applyPackingTemplate: (templateId: string) => Promise<void>;
   deletePackingTemplate: (templateId: string) => Promise<void>;
@@ -308,6 +312,14 @@ export const AppStoreProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setDb(EMPTY_RELATIONAL_STORE);
   };
 
+  const updateProfileName = async (fullName: string) => {
+    await apiRequest('/api/profile', {
+      method: 'PATCH',
+      body: JSON.stringify({ fullName }),
+    });
+    await fetchWorkspace(true);
+  };
+
   const changePassword = async (currentPassword: string, newPassword: string) => {
     await apiRequest('/api/auth/change-password', {
       method: 'POST',
@@ -482,13 +494,28 @@ export const AppStoreProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const activeShoppingItems = useMemo(() => {
     const listIds = new Set(activeShoppingLists.map((l) => l.id));
-    return db.shopping_items.filter((item) => listIds.has(item.list_id));
+    return db.shopping_items
+      .filter((item) => listIds.has(item.list_id))
+      .sort((a, b) => {
+        const diff = (a.sort_order ?? 0) - (b.sort_order ?? 0);
+        if (diff !== 0) return diff;
+        return a.created_at.localeCompare(b.created_at);
+      });
   }, [activeShoppingLists, db.shopping_items]);
 
   const packingTemplates = useMemo(() => db.packing_templates, [db.packing_templates]);
 
   const activePackingItems = useMemo(
-    () => (activeTrip ? db.packing_items.filter((pi) => pi.trip_id === activeTrip.id) : []),
+    () =>
+      activeTrip
+        ? db.packing_items
+            .filter((pi) => pi.trip_id === activeTrip.id)
+            .sort((a, b) => {
+              const diff = (a.sort_order ?? 0) - (b.sort_order ?? 0);
+              if (diff !== 0) return diff;
+              return a.created_at.localeCompare(b.created_at);
+            })
+        : [],
     [activeTrip, db.packing_items]
   );
 
@@ -517,7 +544,9 @@ export const AppStoreProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const addDay = async () => {
     if (!activeTrip) return;
-    const nextNumber = activeDays.length + 1;
+    const maxDayNum =
+      activeDays.length > 0 ? Math.max(...activeDays.map((d) => d.day_number)) : 0;
+    const nextNumber = Math.max(1, maxDayNum + 1);
     const lastDateStr = activeDays[activeDays.length - 1]?.date || activeTrip.end_date;
     const [y, m, d] = lastDateStr.split('-').map(Number);
     const nextDate = new Date(y, m - 1, d + 1);
@@ -529,6 +558,27 @@ export const AppStoreProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         day_number: nextNumber,
         date: dateStr,
         location: activeTrip.destination,
+      }),
+    });
+    await fetchWorkspace(true);
+  };
+
+  const addPreFlightDay = async () => {
+    if (!activeTrip) return;
+    const minDayNum =
+      activeDays.length > 0 ? Math.min(...activeDays.map((d) => d.day_number)) : 1;
+    const preNumber = minDayNum <= 0 ? minDayNum - 1 : 0;
+    const firstDateStr = activeDays[0]?.date || activeTrip.start_date;
+    const [y, m, d] = firstDateStr.split('-').map(Number);
+    const prevDate = new Date(y, m - 1, d - 1);
+    const dateStr = `${prevDate.getFullYear()}-${String(prevDate.getMonth() + 1).padStart(2, '0')}-${String(prevDate.getDate()).padStart(2, '0')}`;
+
+    await apiRequest(`/api/trips/${activeTrip.id}/days`, {
+      method: 'POST',
+      body: JSON.stringify({
+        day_number: preNumber,
+        date: dateStr,
+        location: 'ישראל (לפני הטיסה)',
       }),
     });
     await fetchWorkspace(true);
@@ -713,6 +763,15 @@ export const AppStoreProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     await fetchWorkspace(true);
   };
 
+  const reorderShoppingItems = async (orderedIds: string[]) => {
+    if (orderedIds.length === 0) return;
+    await apiRequest('/api/shopping-items/reorder', {
+      method: 'POST',
+      body: JSON.stringify({ orderedIds }),
+    });
+    await fetchWorkspace(true);
+  };
+
   const createPackingItem = async (
     input: Omit<PackingItem, 'id' | 'created_at' | 'updated_at'>
   ) => {
@@ -730,6 +789,15 @@ export const AppStoreProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const deletePackingItem = async (itemId: string) => {
     await apiRequest(`/api/packing-items/${itemId}`, { method: 'DELETE' });
+    await fetchWorkspace(true);
+  };
+
+  const reorderPackingItems = async (orderedIds: string[]) => {
+    if (orderedIds.length === 0) return;
+    await apiRequest('/api/packing-items/reorder', {
+      method: 'POST',
+      body: JSON.stringify({ orderedIds }),
+    });
     await fetchWorkspace(true);
   };
 
@@ -905,6 +973,7 @@ export const AppStoreProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         signIn,
         signUp,
         signOut,
+        updateProfileName,
         changePassword,
         createCoupleWorkspace,
         updateCoupleWorkspace,
@@ -930,6 +999,7 @@ export const AppStoreProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         activeMemories,
         updateDay,
         addDay,
+        addPreFlightDay,
         createEvent,
         updateEvent,
         deleteEvent,
@@ -950,9 +1020,11 @@ export const AppStoreProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         createShoppingItem,
         updateShoppingItem,
         deleteShoppingItem,
+        reorderShoppingItems,
         createPackingItem,
         updatePackingItem,
         deletePackingItem,
+        reorderPackingItems,
         saveCurrentPackingAsTemplate,
         applyPackingTemplate,
         deletePackingTemplate,

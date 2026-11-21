@@ -11,7 +11,10 @@ import {
   Select,
 } from '@/components/ui/primitives';
 import { formatCurrency } from '@/lib/utils/formatters';
+import { PackingItem, ShoppingItem } from '@/types/database.types';
 import {
+  ArrowDown,
+  ArrowUp,
   Backpack,
   BookmarkPlus,
   Check,
@@ -19,8 +22,9 @@ import {
   ChevronDown,
   ChevronUp,
   DownloadCloud,
-  FileText,
+  Edit3,
   Gift,
+  GripVertical,
   HeartPulse,
   Laptop,
   Luggage,
@@ -135,9 +139,11 @@ export const ListsPage: React.FC = () => {
     createShoppingItem,
     updateShoppingItem,
     deleteShoppingItem,
+    reorderShoppingItems,
     createPackingItem,
     updatePackingItem,
     deletePackingItem,
+    reorderPackingItems,
     saveCurrentPackingAsTemplate,
     applyPackingTemplate,
     deletePackingTemplate,
@@ -146,6 +152,45 @@ export const ListsPage: React.FC = () => {
 
   const [tab, setTab] = useState<'packing' | 'shopping'>('packing');
 
+  // Custom user-defined luggage / bags per trip (NO forced pre-selected bags!)
+  const customBagsStorageKey = activeTrip ? `fy_custom_bags_${activeTrip.id}` : '';
+  const [customBags, setCustomBags] = useState<string[]>([]);
+  const [newBagModalOpen, setNewBagModalOpen] = useState(false);
+  const [newBagName, setNewBagName] = useState('');
+
+  useEffect(() => {
+    if (!customBagsStorageKey) {
+      setCustomBags([]);
+      return;
+    }
+    try {
+      const saved = JSON.parse(window.localStorage.getItem(customBagsStorageKey) || '[]');
+      setCustomBags(Array.isArray(saved) ? saved : []);
+    } catch {
+      setCustomBags([]);
+    }
+  }, [customBagsStorageKey]);
+
+  const persistCustomBags = (nextBags: string[]) => {
+    setCustomBags(nextBags);
+    if (customBagsStorageKey) {
+      window.localStorage.setItem(customBagsStorageKey, JSON.stringify(nextBags));
+    }
+  };
+
+  const handleAddCustomBag = (bagName: string) => {
+    const clean = bagName.trim();
+    if (!clean) return;
+    if (!customBags.some((b) => b.toLowerCase() === clean.toLowerCase())) {
+      persistCustomBags([...customBags, clean]);
+    }
+    setPackCategory(clean);
+  };
+
+  const handleRemoveEmptyBag = (bagName: string) => {
+    persistCustomBags(customBags.filter((b) => b.toLowerCase() !== bagName.toLowerCase()));
+  };
+
   // Packing Filters & Modals
   const [packStatusFilter, setPackStatusFilter] = useState<'ALL' | 'UNPACKED' | 'PACKED'>('ALL');
   const [packOwnerFilter, setPackOwnerFilter] = useState<string>('ALL');
@@ -153,10 +198,12 @@ export const ListsPage: React.FC = () => {
   const [quickAddCategory, setQuickAddCategory] = useState<Record<string, string>>({});
 
   const [addPackingModalOpen, setAddPackingModalOpen] = useState(false);
+  const [editingPackingItem, setEditingPackingItem] = useState<PackingItem | null>(null);
   const [packItemName, setPackItemName] = useState('');
-  const [packCategory, setPackCategory] = useState('Suitcase');
+  const [packCategory, setPackCategory] = useState('');
   const [packQuantity, setPackQuantity] = useState('1');
   const [packAssignee, setPackAssignee] = useState('');
+  const [draggingPackId, setDraggingPackId] = useState<string | null>(null);
 
   const [templateModalOpen, setTemplateModalOpen] = useState(false);
   const [templateName, setTemplateName] = useState('');
@@ -166,11 +213,13 @@ export const ListsPage: React.FC = () => {
   const [newListModal, setNewListModal] = useState(false);
   const [newListName, setNewListName] = useState('');
   const [shopItemModalOpen, setShopItemModalOpen] = useState(false);
+  const [editingShopItem, setEditingShopItem] = useState<ShoppingItem | null>(null);
   const [shopItemName, setShopItemName] = useState('');
   const [shopQuantity, setShopQuantity] = useState('1');
   const [shopPrice, setShopPrice] = useState('');
   const [shopAssignee, setShopAssignee] = useState('');
   const [quickShopInput, setQuickShopInput] = useState('');
+  const [draggingShopId, setDraggingShopId] = useState<string | null>(null);
 
   useEffect(() => {
     if (
@@ -266,26 +315,93 @@ export const ListsPage: React.FC = () => {
     }
   };
 
+  const openCreatePackingModal = (defaultBag?: string) => {
+    setEditingPackingItem(null);
+    setPackItemName('');
+    setPackCategory(defaultBag || allAvailableBags[0] || (lang === 'he' ? 'מזוודה' : 'Suitcase'));
+    setPackQuantity('1');
+    setPackAssignee('');
+    setAddPackingModalOpen(true);
+  };
+
+  const openEditPackingModal = (item: PackingItem) => {
+    setEditingPackingItem(item);
+    setPackItemName(item.item_name);
+    setPackCategory(item.category);
+    setPackQuantity(String(item.quantity));
+    setPackAssignee(item.assigned_to || '');
+    setAddPackingModalOpen(true);
+  };
+
   const handleAddDetailedPackingItem = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!packItemName.trim()) return;
+    const chosenBag = packCategory.trim() || (lang === 'he' ? 'כבודה כללית' : 'General Bag');
     try {
-      await createPackingItem({
-        trip_id: activeTrip.id,
-        item_name: packItemName.trim(),
-        category: packCategory,
-        quantity: Math.max(1, Number(packQuantity) || 1),
-        assigned_to: packAssignee || null,
-        is_packed: false,
-        notes: null,
-      });
+      handleAddCustomBag(chosenBag);
+      if (editingPackingItem) {
+        await updatePackingItem(editingPackingItem.id, {
+          item_name: packItemName.trim(),
+          category: chosenBag,
+          quantity: Math.max(1, Number(packQuantity) || 1),
+          assigned_to: packAssignee || null,
+        });
+        notify(lang === 'he' ? 'הפריט עודכן בהצלחה' : 'Packing item updated', 'success');
+      } else {
+        await createPackingItem({
+          trip_id: activeTrip.id,
+          item_name: packItemName.trim(),
+          category: chosenBag,
+          quantity: Math.max(1, Number(packQuantity) || 1),
+          assigned_to: packAssignee || null,
+          is_packed: false,
+          pack_stage: 0,
+          notes: null,
+        });
+        notify(lang === 'he' ? 'הפריט נוסף לכבודה' : 'Item added to luggage', 'success');
+      }
+      setEditingPackingItem(null);
       setPackItemName('');
       setPackQuantity('1');
       setAddPackingModalOpen(false);
-      notify(lang === 'he' ? 'הפריט נוסף למזוודה' : 'Item added to suitcase', 'success');
     } catch (err) {
       handleError(err);
     }
+  };
+
+  // 3-state packing cycle: 0 (unchecked) -> 1 (✓ check only) -> 2 (line-through + colored row) -> 0
+  const getPackStage = (item: PackingItem): 0 | 1 | 2 => {
+    if (item.pack_stage === 0 || item.pack_stage === 1 || item.pack_stage === 2) {
+      return item.pack_stage;
+    }
+    return item.is_packed ? 2 : 0;
+  };
+
+  const cyclePackingStage = async (item: PackingItem) => {
+    const current = getPackStage(item);
+    const next = ((current + 1) % 3) as 0 | 1 | 2;
+    await updatePackingItem(item.id, {
+      pack_stage: next,
+      is_packed: next === 2,
+    });
+  };
+
+  // Reorder helper for Packing items within a bag
+  const movePackingItem = async (bagItems: PackingItem[], fromIndex: number, toIndex: number) => {
+    if (toIndex < 0 || toIndex >= bagItems.length || fromIndex === toIndex) return;
+    const reordered = [...bagItems];
+    const [moved] = reordered.splice(fromIndex, 1);
+    reordered.splice(toIndex, 0, moved);
+    await reorderPackingItems(reordered.map((i) => i.id));
+  };
+
+  // Reorder helper for Shopping items within the active list
+  const moveShoppingItem = async (listItems: ShoppingItem[], fromIndex: number, toIndex: number) => {
+    if (toIndex < 0 || toIndex >= listItems.length || fromIndex === toIndex) return;
+    const reordered = [...listItems];
+    const [moved] = reordered.splice(fromIndex, 1);
+    reordered.splice(toIndex, 0, moved);
+    await reorderShoppingItems(reordered.map((i) => i.id));
   };
 
   // Shopping handlers
@@ -335,28 +451,57 @@ export const ListsPage: React.FC = () => {
     }
   };
 
+  const openCreateShopModal = () => {
+    setEditingShopItem(null);
+    setShopItemName('');
+    setShopQuantity('1');
+    setShopPrice('');
+    setShopAssignee('');
+    setShopItemModalOpen(true);
+  };
+
+  const openEditShopModal = (item: ShoppingItem) => {
+    setEditingShopItem(item);
+    setShopItemName(item.item_name);
+    setShopQuantity(String(item.quantity));
+    setShopPrice(item.estimated_price !== null ? String(item.estimated_price) : '');
+    setShopAssignee(item.assigned_to || '');
+    setShopItemModalOpen(true);
+  };
+
   const handleDetailedShopItemSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!shopItemName.trim()) return;
     try {
-      let targetListId = selectedListId;
-      if (!targetListId) {
-        const created = await createShoppingList(
-          lang === 'he' ? 'קניות לפני הטיסה' : 'Pre-Trip Shopping'
-        );
-        targetListId = created.id;
-        setSelectedListId(targetListId);
+      if (editingShopItem) {
+        await updateShoppingItem(editingShopItem.id, {
+          item_name: shopItemName.trim(),
+          quantity: Math.max(1, Number(shopQuantity) || 1),
+          estimated_price: shopPrice ? Number(shopPrice) : null,
+          assigned_to: shopAssignee || null,
+        });
+        notify(lang === 'he' ? 'פריט הקנייה עודכן' : 'Shopping item updated', 'success');
+      } else {
+        let targetListId = selectedListId;
+        if (!targetListId) {
+          const created = await createShoppingList(
+            lang === 'he' ? 'קניות לפני הטיסה' : 'Pre-Trip Shopping'
+          );
+          targetListId = created.id;
+          setSelectedListId(targetListId);
+        }
+        await createShoppingItem({
+          list_id: targetListId,
+          item_name: shopItemName.trim(),
+          quantity: Math.max(1, Number(shopQuantity) || 1),
+          estimated_price: shopPrice ? Number(shopPrice) : null,
+          category: 'General',
+          assigned_to: shopAssignee || null,
+          is_purchased: false,
+          notes: null,
+        });
       }
-      await createShoppingItem({
-        list_id: targetListId,
-        item_name: shopItemName.trim(),
-        quantity: Math.max(1, Number(shopQuantity) || 1),
-        estimated_price: shopPrice ? Number(shopPrice) : null,
-        category: 'General',
-        assigned_to: shopAssignee || null,
-        is_purchased: false,
-        notes: null,
-      });
+      setEditingShopItem(null);
       setShopItemName('');
       setShopQuantity('1');
       setShopPrice('');
@@ -375,30 +520,43 @@ export const ListsPage: React.FC = () => {
       id: catId,
       labelHe: catId,
       labelEn: catId,
-      icon: Backpack,
-      color: 'bg-ivory text-navy',
+      icon: Luggage,
+      color: 'bg-sand/20 text-navy',
     };
   };
 
-  // Group packing items by category
+  // All bags = user's custom bags + any bags that already have items (NO forced defaults!)
+  const allAvailableBags = useMemo(() => {
+    const seen = new Set<string>();
+    const list: string[] = [];
+    const addUnique = (name: string) => {
+      const clean = name.trim();
+      if (!clean) return;
+      const lower = clean.toLowerCase();
+      if (!seen.has(lower)) {
+        seen.add(lower);
+        list.push(clean);
+      }
+    };
+    customBags.forEach(addUnique);
+    activePackingItems.forEach((item) => addUnique(item.category));
+    return list;
+  }, [customBags, activePackingItems]);
+
+  // Group packing items ONLY by the user's bags & existing item bags
   const groupedPackingCategories = useMemo(() => {
     const map = new Map<string, typeof filteredPackingItems>();
-    PACKING_CATEGORIES.forEach((c) => map.set(c.id, []));
+    if (packStatusFilter === 'ALL' && packOwnerFilter === 'ALL') {
+      allAvailableBags.forEach((bag) => map.set(bag, []));
+    }
     filteredPackingItems.forEach((item) => {
-      const key =
-        PACKING_CATEGORIES.find(
-          (c) => c.id.toLowerCase() === item.category.toLowerCase()
-        )?.id || item.category;
-      map.set(key, [...(map.get(key) || []), item]);
+      const existingKey =
+        Array.from(map.keys()).find((k) => k.toLowerCase() === item.category.toLowerCase()) ||
+        item.category;
+      map.set(existingKey, [...(map.get(existingKey) || []), item]);
     });
-    return Array.from(map.entries()).filter(
-      ([catKey, items]) =>
-        items.length > 0 ||
-        (packStatusFilter === 'ALL' &&
-          packOwnerFilter === 'ALL' &&
-          ['Backpack', 'Trolley', 'Toiletry Bag', 'Suitcase'].includes(catKey))
-    );
-  }, [filteredPackingItems, packStatusFilter, packOwnerFilter]);
+    return Array.from(map.entries());
+  }, [allAvailableBags, filteredPackingItems, packStatusFilter, packOwnerFilter]);
 
   return (
     <div className="space-y-5">
@@ -452,6 +610,42 @@ export const ListsPage: React.FC = () => {
         </div>
       </div>
 
+      {/* Sticky Action Bar for Packing & Shopping */}
+      <div className="sticky top-[62px] z-20 -mx-1 px-2.5 py-2 rounded-2xl bg-surface/92 backdrop-blur-md border border-sand/25 shadow-soft flex items-center justify-between gap-2">
+        <span className="text-xs font-bold text-navy/75 truncate ps-1">
+          {tab === 'packing'
+            ? `${packedCount}/${totalPackCount} ${lang === 'he' ? 'נארזו' : 'packed'}`
+            : currentList
+              ? `${currentList.name} (${purchasedItemsCount}/${currentListItems.length})`
+              : t.lists.shoppingTab}
+        </span>
+        <div className="flex items-center gap-1.5 shrink-0">
+          {tab === 'packing' ? (
+            <>
+              <Button size="sm" variant="outline" onClick={() => setNewBagModalOpen(true)}>
+                <Luggage className="w-3.5 h-3.5 text-sand" />
+                <span>{lang === 'he' ? 'הוספת כבודה' : 'Add Bag'}</span>
+              </Button>
+              <Button size="sm" onClick={() => openCreatePackingModal()}>
+                <Plus className="w-4 h-4" />
+                <span>{t.lists.addItem}</span>
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button size="sm" variant="outline" onClick={() => setNewListModal(true)}>
+                <Plus className="w-3.5 h-3.5" />
+                <span>{t.lists.newShoppingList}</span>
+              </Button>
+              <Button size="sm" onClick={openCreateShopModal}>
+                <Plus className="w-4 h-4" />
+                <span>{t.lists.addItem}</span>
+              </Button>
+            </>
+          )}
+        </div>
+      </div>
+
       {/* ===================================================================== */}
       {/* TAB 1: INTERACTIVE SUITCASE & PACKING EXPERIENCE                      */}
       {/* ===================================================================== */}
@@ -490,7 +684,7 @@ export const ListsPage: React.FC = () => {
                 <Button
                   size="sm"
                   variant="sand"
-                  onClick={() => setAddPackingModalOpen(true)}
+                  onClick={() => openCreatePackingModal()}
                 >
                   <Plus className="w-4 h-4" />
                   <span>{t.lists.addItem}</span>
@@ -669,12 +863,65 @@ export const ListsPage: React.FC = () => {
             </div>
           </div>
 
-          {/* Category Cards Grid */}
+          {/* Legend for 3-stage check + Custom Luggage Cards Grid */}
+          <div className="flex flex-wrap items-center justify-between gap-2 px-1">
+            <span className="text-[11px] text-navy/65 font-medium">
+              {lang === 'he'
+                ? 'טיפ: לחיצה 1 = ✓ מסומן • לחיצה 2 = קו חוצה + צביעת שורה (נארז) • לחיצה 3 = איפוס'
+                : 'Tip: 1st tap = ✓ checked • 2nd tap = crossed & highlighted (packed) • 3rd tap = reset'}
+            </span>
+            <Button size="sm" variant="outline" onClick={() => setNewBagModalOpen(true)}>
+              <Plus className="w-3.5 h-3.5 text-sand" />
+              <span>{lang === 'he' ? 'הוספת כבודה / תיק' : 'Add Luggage / Bag'}</span>
+            </Button>
+          </div>
+
+          {groupedPackingCategories.length === 0 ? (
+            <Card className="p-7 text-center space-y-4">
+              <div className="w-12 h-12 rounded-2xl bg-sand/15 text-sand mx-auto flex items-center justify-center">
+                <Luggage className="w-6 h-6" />
+              </div>
+              <div className="space-y-1">
+                <h3 className="font-bold text-base text-navy">
+                  {lang === 'he' ? 'הוסיפו את הכבודה שלכם לטיול' : 'Add your own bags & luggage'}
+                </h3>
+                <p className="text-xs text-navy/60 max-w-md mx-auto">
+                  {lang === 'he'
+                    ? 'אתם בוחרים בעצמכם אילו תיקים ומזוודות לקחת (למשל: טרולי, תיק גב, תיק רחצה, מזוודה גדולה או שם אישי)'
+                    : 'Create your own custom bags and suitcases to organize every item'}
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center justify-center gap-2">
+                <Button onClick={() => setNewBagModalOpen(true)}>
+                  <Plus className="w-4 h-4" />
+                  <span>{lang === 'he' ? 'הוספת כבודה חדשה' : 'Add New Bag'}</span>
+                </Button>
+              </div>
+              <div className="pt-2 flex flex-wrap items-center justify-center gap-1.5">
+                <span className="text-[11px] text-navy/50 me-1">
+                  {lang === 'he' ? 'הוספה מהירה:' : 'Quick add:'}
+                </span>
+                {PACKING_CATEGORIES.map((c) => {
+                  const lbl = lang === 'he' ? c.labelHe : c.labelEn;
+                  return (
+                    <button
+                      key={c.id}
+                      type="button"
+                      onClick={() => handleAddCustomBag(lbl)}
+                      className="px-3 py-1 rounded-full bg-ivory hover:bg-sand/20 border border-navy/10 text-xs font-semibold text-navy transition-colors"
+                    >
+                      + {lbl}
+                    </button>
+                  );
+                })}
+              </div>
+            </Card>
+          ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {groupedPackingCategories.map(([catKey, items]) => {
               const meta = getCategoryMeta(catKey);
               const Icon = meta.icon;
-              const catPacked = items.filter((i) => i.is_packed).length;
+              const catPacked = items.filter((i) => getPackStage(i) === 2).length;
               const isCollapsed = Boolean(collapsedCategories[catKey]);
 
               return (
@@ -706,7 +953,20 @@ export const ListsPage: React.FC = () => {
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1.5">
+                      {items.length === 0 && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleRemoveEmptyBag(catKey);
+                          }}
+                          className="p-1 text-navy/40 hover:text-red-600 rounded-lg"
+                          title={lang === 'he' ? 'הסרת כבודה ריקה' : 'Remove empty bag'}
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
                       {items.length > 0 && catPacked === items.length && (
                         <CheckCircle2 className="w-4 h-4 text-sage-dark" />
                       )}
@@ -724,60 +984,102 @@ export const ListsPage: React.FC = () => {
                       {items.length === 0 ? (
                         <p className="text-xs text-navy/45 text-center py-3">
                           {lang === 'he'
-                            ? 'אין עדיין פריטים בקטגוריה זו'
-                            : 'No items in this category yet'}
+                            ? 'אין עדיין פריטים בכבודה זו'
+                            : 'No items in this bag yet'}
                         </p>
                       ) : (
-                        <div className="divide-y divide-navy/[0.06]">
-                          {items.map((item) => {
+                        <div className="space-y-1">
+                          {items.map((item, idx) => {
                             const assignee = coupleMembers.find(
                               (cm) => cm.user_id === item.assigned_to
                             )?.profile;
+                            const stage = getPackStage(item);
 
                             return (
                               <div
                                 key={item.id}
-                                className="py-2.5 flex items-center justify-between gap-2 group"
+                                draggable
+                                onDragStart={() => setDraggingPackId(item.id)}
+                                onDragOver={(e) => e.preventDefault()}
+                                onDrop={() => {
+                                  if (!draggingPackId || draggingPackId === item.id) return;
+                                  const fromIdx = items.findIndex((x) => x.id === draggingPackId);
+                                  if (fromIdx !== -1) movePackingItem(items, fromIdx, idx);
+                                  setDraggingPackId(null);
+                                }}
+                                onDragEnd={() => setDraggingPackId(null)}
+                                className={`py-2 px-2 rounded-xl flex items-center justify-between gap-1.5 transition-all border ${
+                                  stage === 2
+                                    ? 'bg-sand/15 border-sand/35'
+                                    : stage === 1
+                                      ? 'bg-ivory/50 border-navy/10'
+                                      : 'border-transparent hover:bg-ivory/40'
+                                }`}
                               >
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    updatePackingItem(item.id, {
-                                      is_packed: !item.is_packed,
-                                    })
-                                  }
-                                  className="flex items-center gap-3 text-start min-w-0 flex-1"
-                                >
-                                  <div
-                                    className={`w-5 h-5 rounded-lg flex items-center justify-center border transition-all shrink-0 ${
-                                      item.is_packed
-                                        ? 'bg-sage-dark border-sage-dark text-white'
-                                        : 'border-navy/30 bg-ivory/50'
-                                    }`}
+                                <div className="flex items-center gap-1.5 min-w-0 flex-1">
+                                  <span
+                                    className="cursor-grab text-navy/25 hover:text-navy/60 shrink-0"
+                                    title={lang === 'he' ? 'גרירה לשינוי סדר' : 'Drag to reorder'}
                                   >
-                                    {item.is_packed && <Check className="w-3.5 h-3.5" />}
-                                  </div>
-                                  <div className="min-w-0">
+                                    <GripVertical className="w-3.5 h-3.5" />
+                                  </span>
+
+                                  <button
+                                    type="button"
+                                    onClick={() => cyclePackingStage(item)}
+                                    className="flex items-center gap-2.5 text-start min-w-0 flex-1"
+                                  >
                                     <div
-                                      className={`text-sm font-semibold truncate transition-all ${
-                                        item.is_packed
-                                          ? 'line-through text-navy/40'
-                                          : 'text-navy'
+                                      className={`w-5 h-5 rounded-lg flex items-center justify-center border transition-all shrink-0 ${
+                                        stage === 2
+                                          ? 'bg-sand border-sand text-white shadow-xs'
+                                          : stage === 1
+                                            ? 'bg-sage/30 border-sage-dark text-sage-dark'
+                                            : 'border-navy/30 bg-surface'
                                       }`}
                                     >
-                                      {item.item_name}
+                                      {stage >= 1 && <Check className="w-3.5 h-3.5" />}
                                     </div>
-                                    {assignee && (
-                                      <span className="text-[10px] text-sand-dark font-semibold">
-                                        {assignee.full_name}
-                                      </span>
-                                    )}
-                                  </div>
-                                </button>
+                                    <div className="min-w-0">
+                                      <div
+                                        className={`text-sm font-semibold truncate transition-all ${
+                                          stage === 2
+                                            ? 'line-through text-navy/50'
+                                            : 'text-navy'
+                                        }`}
+                                      >
+                                        {item.item_name}
+                                      </div>
+                                      {assignee && (
+                                        <span className="text-[10px] text-sand-dark font-semibold">
+                                          {assignee.full_name}
+                                        </span>
+                                      )}
+                                    </div>
+                                  </button>
+                                </div>
 
-                                {/* Quantity stepper + delete */}
-                                <div className="flex items-center gap-1 shrink-0">
-                                  <div className="flex items-center bg-ivory rounded-lg border border-navy/10 px-1 py-0.5">
+                                {/* Reorder + Edit + Quantity stepper + Delete */}
+                                <div className="flex items-center gap-0.5 shrink-0">
+                                  <button
+                                    type="button"
+                                    disabled={idx === 0}
+                                    onClick={() => movePackingItem(items, idx, idx - 1)}
+                                    className="p-1 text-navy/40 hover:text-navy disabled:opacity-20 rounded-md"
+                                    title={lang === 'he' ? 'הזזה למעלה' : 'Move up'}
+                                  >
+                                    <ArrowUp className="w-3 h-3" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    disabled={idx === items.length - 1}
+                                    onClick={() => movePackingItem(items, idx, idx + 1)}
+                                    className="p-1 text-navy/40 hover:text-navy disabled:opacity-20 rounded-md"
+                                    title={lang === 'he' ? 'הזזה למטה' : 'Move down'}
+                                  >
+                                    <ArrowDown className="w-3 h-3" />
+                                  </button>
+                                  <div className="flex items-center bg-surface rounded-lg border border-navy/10 px-1 py-0.5 ms-0.5">
                                     <button
                                       type="button"
                                       onClick={() =>
@@ -789,7 +1091,7 @@ export const ListsPage: React.FC = () => {
                                     >
                                       <Minus className="w-3 h-3" />
                                     </button>
-                                    <span className="text-xs font-bold px-1.5 text-navy">
+                                    <span className="text-xs font-bold px-1 text-navy">
                                       {item.quantity}
                                     </span>
                                     <button
@@ -806,8 +1108,17 @@ export const ListsPage: React.FC = () => {
                                   </div>
                                   <button
                                     type="button"
+                                    onClick={() => openEditPackingModal(item)}
+                                    className="p-1.5 text-navy/45 hover:text-navy rounded-lg"
+                                    title={t.common.edit}
+                                  >
+                                    <Edit3 className="w-3.5 h-3.5" />
+                                  </button>
+                                  <button
+                                    type="button"
                                     onClick={() => deletePackingItem(item.id)}
                                     className="p-1.5 text-navy/35 hover:text-red-600 rounded-lg"
+                                    title={t.common.delete}
                                   >
                                     <Trash2 className="w-3.5 h-3.5" />
                                   </button>
@@ -836,7 +1147,7 @@ export const ListsPage: React.FC = () => {
                             }))
                           }
                           placeholder={
-                            lang === 'he' ? '+ הוספה מהירה לקטגוריה...' : '+ Quick add item...'
+                            lang === 'he' ? '+ הוספה מהירה לכבודה...' : '+ Quick add item...'
                           }
                           className="flex-1 h-9 px-3 rounded-xl bg-ivory/70 border border-navy/10 text-xs text-navy placeholder:text-navy/40 focus:outline-none focus:border-sand"
                         />
@@ -850,6 +1161,7 @@ export const ListsPage: React.FC = () => {
               );
             })}
           </div>
+          )}
         </div>
       ) : (
         /* ===================================================================== */
@@ -954,7 +1266,7 @@ export const ListsPage: React.FC = () => {
                 <Button
                   size="sm"
                   variant="sand"
-                  onClick={() => setShopItemModalOpen(true)}
+                  onClick={openCreateShopModal}
                 >
                   <Plus className="w-4 h-4" />
                   <span>{t.lists.addItem}</span>
@@ -1002,7 +1314,7 @@ export const ListsPage: React.FC = () => {
             </Card>
           ) : (
             <div className="space-y-2">
-              {currentListItems.map((item) => {
+              {currentListItems.map((item, idx) => {
                 const assignee = coupleMembers.find(
                   (cm) => cm.user_id === item.assigned_to
                 )?.profile;
@@ -1010,56 +1322,92 @@ export const ListsPage: React.FC = () => {
                 return (
                   <Card
                     key={item.id}
-                    className={`p-3.5 flex items-center justify-between gap-3 transition-all ${
-                      item.is_purchased ? 'bg-ivory/40 opacity-75' : ''
+                    draggable
+                    onDragStart={() => setDraggingShopId(item.id)}
+                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={() => {
+                      if (!draggingShopId || draggingShopId === item.id) return;
+                      const fromIdx = currentListItems.findIndex((x) => x.id === draggingShopId);
+                      if (fromIdx !== -1) moveShoppingItem(currentListItems, fromIdx, idx);
+                      setDraggingShopId(null);
+                    }}
+                    onDragEnd={() => setDraggingShopId(null)}
+                    className={`p-3.5 flex items-center justify-between gap-2 transition-all ${
+                      item.is_purchased ? 'bg-sand/10 border-sand/30' : ''
                     }`}
                   >
-                    <button
-                      type="button"
-                      onClick={() =>
-                        updateShoppingItem(item.id, {
-                          is_purchased: !item.is_purchased,
-                        })
-                      }
-                      className="flex items-center gap-3 text-start flex-1 min-w-0"
-                    >
-                      <div
-                        className={`w-5 h-5 rounded-lg flex items-center justify-center border transition-all shrink-0 ${
-                          item.is_purchased
-                            ? 'bg-sage-dark border-sage-dark text-white'
-                            : 'border-navy/30 bg-ivory'
-                        }`}
+                    <div className="flex items-center gap-2 flex-1 min-w-0">
+                      <span
+                        className="cursor-grab text-navy/25 hover:text-navy/60 shrink-0"
+                        title={lang === 'he' ? 'גרירה לשינוי סדר' : 'Drag to reorder'}
                       >
-                        {item.is_purchased && <Check className="w-3.5 h-3.5" />}
-                      </div>
-                      <div className="min-w-0">
+                        <GripVertical className="w-4 h-4" />
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          updateShoppingItem(item.id, {
+                            is_purchased: !item.is_purchased,
+                          })
+                        }
+                        className="flex items-center gap-3 text-start flex-1 min-w-0"
+                      >
                         <div
-                          className={`font-bold text-sm truncate ${
+                          className={`w-5 h-5 rounded-lg flex items-center justify-center border transition-all shrink-0 ${
                             item.is_purchased
-                              ? 'line-through text-navy/45'
-                              : 'text-navy'
+                              ? 'bg-sand border-sand text-white'
+                              : 'border-navy/30 bg-ivory'
                           }`}
                         >
-                          {item.item_name}
+                          {item.is_purchased && <Check className="w-3.5 h-3.5" />}
                         </div>
-                        <div className="flex items-center gap-2 mt-0.5">
-                          {assignee && (
-                            <Badge variant="sage">{assignee.full_name}</Badge>
-                          )}
-                          {item.estimated_price !== null && item.estimated_price > 0 && (
-                            <span className="text-xs font-semibold text-sand-dark">
-                              {formatCurrency(
-                                item.estimated_price * item.quantity,
-                                activeTrip.currency,
-                                lang
-                              )}
-                            </span>
-                          )}
+                        <div className="min-w-0">
+                          <div
+                            className={`font-bold text-sm truncate ${
+                              item.is_purchased
+                                ? 'line-through text-navy/45'
+                                : 'text-navy'
+                            }`}
+                          >
+                            {item.item_name}
+                          </div>
+                          <div className="flex items-center gap-2 mt-0.5">
+                            {assignee && (
+                              <Badge variant="sage">{assignee.full_name}</Badge>
+                            )}
+                            {item.estimated_price !== null && item.estimated_price > 0 && (
+                              <span className="text-xs font-semibold text-sand-dark">
+                                {formatCurrency(
+                                  item.estimated_price * item.quantity,
+                                  activeTrip.currency,
+                                  lang
+                                )}
+                              </span>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    </button>
+                      </button>
+                    </div>
 
-                    <div className="flex items-center gap-1.5 shrink-0">
+                    <div className="flex items-center gap-1 shrink-0">
+                      <button
+                        type="button"
+                        disabled={idx === 0}
+                        onClick={() => moveShoppingItem(currentListItems, idx, idx - 1)}
+                        className="p-1 text-navy/40 hover:text-navy disabled:opacity-20 rounded-md"
+                        title={lang === 'he' ? 'הזזה למעלה' : 'Move up'}
+                      >
+                        <ArrowUp className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        disabled={idx === currentListItems.length - 1}
+                        onClick={() => moveShoppingItem(currentListItems, idx, idx + 1)}
+                        className="p-1 text-navy/40 hover:text-navy disabled:opacity-20 rounded-md"
+                        title={lang === 'he' ? 'הזזה למטה' : 'Move down'}
+                      >
+                        <ArrowDown className="w-3.5 h-3.5" />
+                      </button>
                       <div className="flex items-center bg-ivory rounded-lg border border-navy/10 px-1 py-0.5">
                         <button
                           type="button"
@@ -1087,14 +1435,22 @@ export const ListsPage: React.FC = () => {
                           <Plus className="w-3 h-3" />
                         </button>
                       </div>
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="text-red-600"
+                      <button
+                        type="button"
+                        onClick={() => openEditShopModal(item)}
+                        className="p-1.5 text-navy/50 hover:text-navy rounded-lg"
+                        title={t.common.edit}
+                      >
+                        <Edit3 className="w-4 h-4" />
+                      </button>
+                      <button
+                        type="button"
+                        className="p-1.5 text-red-600/75 hover:text-red-600 rounded-lg"
                         onClick={() => deleteShoppingItem(item.id)}
+                        title={t.common.delete}
                       >
                         <Trash2 className="w-4 h-4" />
-                      </Button>
+                      </button>
                     </div>
                   </Card>
                 );
@@ -1104,11 +1460,44 @@ export const ListsPage: React.FC = () => {
         </div>
       )}
 
-      {/* Detailed Add Packing Item Drawer */}
+      {/* Add Custom Luggage / Bag Drawer */}
+      <ModalDrawer
+        open={newBagModalOpen}
+        onClose={() => setNewBagModalOpen(false)}
+        title={lang === 'he' ? 'הוספת כבודה / תיק חדש' : 'Add Luggage / Bag'}
+      >
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (!newBagName.trim()) return;
+            handleAddCustomBag(newBagName);
+            setNewBagName('');
+            setNewBagModalOpen(false);
+            notify(lang === 'he' ? 'הכבודה נוספה לרשימה!' : 'Luggage added!', 'success');
+          }}
+          className="space-y-3.5"
+        >
+          <Input
+            label={lang === 'he' ? 'שם הכבודה / התיק' : 'Bag / Luggage Name'}
+            required
+            value={newBagName}
+            onChange={(e) => setNewBagName(e.target.value)}
+            placeholder={lang === 'he' ? 'למשל: טרולי, תיק גב, מזוודה של אופק 🧳' : 'e.g., Carry-on Trolley 🧳'}
+          />
+          <Button type="submit" className="w-full">
+            {t.common.add}
+          </Button>
+        </form>
+      </ModalDrawer>
+
+      {/* Detailed Add / Edit Packing Item Drawer */}
       <ModalDrawer
         open={addPackingModalOpen}
-        onClose={() => setAddPackingModalOpen(false)}
-        title={t.lists.addItem}
+        onClose={() => {
+          setAddPackingModalOpen(false);
+          setEditingPackingItem(null);
+        }}
+        title={editingPackingItem ? t.common.edit : t.lists.addItem}
       >
         <form onSubmit={handleAddDetailedPackingItem} className="space-y-3.5">
           <Input
@@ -1119,17 +1508,30 @@ export const ListsPage: React.FC = () => {
             placeholder={lang === 'he' ? 'למשל: מעיל גשם / מתאם חשמל' : 'e.g., Rain Jacket'}
           />
           <div className="grid grid-cols-2 gap-3">
-            <Select
-              label={lang === 'he' ? 'איפה לארוז? (תיק / מזוודה)' : 'Where to Pack? (Bag)'}
-              value={packCategory}
-              onChange={(e) => setPackCategory(e.target.value)}
-            >
-              {PACKING_CATEGORIES.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {lang === 'he' ? c.labelHe : c.labelEn}
-                </option>
-              ))}
-            </Select>
+            {allAvailableBags.length > 0 ? (
+              <Select
+                label={lang === 'he' ? 'באיזו כבודה?' : 'Which Bag?'}
+                value={packCategory}
+                onChange={(e) => setPackCategory(e.target.value)}
+              >
+                {allAvailableBags.map((bag) => {
+                  const meta = getCategoryMeta(bag);
+                  return (
+                    <option key={bag} value={bag}>
+                      {lang === 'he' ? meta.labelHe : meta.labelEn}
+                    </option>
+                  );
+                })}
+              </Select>
+            ) : (
+              <Input
+                label={lang === 'he' ? 'שם הכבודה / התיק' : 'Bag Name'}
+                required
+                value={packCategory}
+                onChange={(e) => setPackCategory(e.target.value)}
+                placeholder={lang === 'he' ? 'למשל: טרולי / תיק גב' : 'e.g., Trolley'}
+              />
+            )}
             <Input
               type="number"
               min="1"
@@ -1156,11 +1558,14 @@ export const ListsPage: React.FC = () => {
         </form>
       </ModalDrawer>
 
-      {/* Detailed Add Shopping Item Drawer */}
+      {/* Detailed Add / Edit Shopping Item Drawer */}
       <ModalDrawer
         open={shopItemModalOpen}
-        onClose={() => setShopItemModalOpen(false)}
-        title={t.lists.addItem}
+        onClose={() => {
+          setShopItemModalOpen(false);
+          setEditingShopItem(null);
+        }}
+        title={editingShopItem ? t.common.edit : t.lists.addItem}
       >
         <form onSubmit={handleDetailedShopItemSubmit} className="space-y-3.5">
           <Input

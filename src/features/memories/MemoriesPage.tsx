@@ -140,12 +140,17 @@ export const MemoriesPage: React.FC = () => {
 
   return (
     <div className="space-y-5">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-navy">{t.memories.title}</h1>
-          <p className="text-xs text-navy/65">{activeTrip.name}</p>
-        </div>
-        <Button onClick={openCreateMemoryModal}>
+      <div>
+        <h1 className="text-2xl font-bold text-navy">{t.memories.title}</h1>
+        <p className="text-xs text-navy/65">{activeTrip.name}</p>
+      </div>
+
+      {/* Sticky Action Bar */}
+      <div className="sticky top-[62px] z-20 -mx-1 px-2.5 py-2 rounded-2xl bg-surface/92 backdrop-blur-md border border-sand/25 shadow-soft flex items-center justify-between gap-2">
+        <span className="text-xs font-bold text-navy/75 ps-1">
+          {activeMemories.length} {lang === 'he' ? 'זיכרונות' : 'memories'}
+        </span>
+        <Button size="sm" onClick={openCreateMemoryModal}>
           <Plus className="w-4 h-4" />
           <span>{t.memories.addMemory}</span>
         </Button>

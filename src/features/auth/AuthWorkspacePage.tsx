@@ -29,6 +29,7 @@ export const AuthWorkspacePage: React.FC<{ manageMode?: boolean }> = ({ manageMo
     signIn,
     signUp,
     signOut,
+    updateProfileName,
     changePassword,
     createCoupleWorkspace,
     updateCoupleWorkspace,
@@ -46,12 +47,19 @@ export const AuthWorkspacePage: React.FC<{ manageMode?: boolean }> = ({ manageMo
   const [workspaceTab, setWorkspaceTab] = useState<'create' | 'join'>('create');
   const [workspaceName, setWorkspaceName] = useState('');
   const [editWorkspaceName, setEditWorkspaceName] = useState('');
+  const [editMyName, setEditMyName] = useState('');
 
   React.useEffect(() => {
     if (currentCouple?.name) {
       setEditWorkspaceName(currentCouple.name);
     }
   }, [currentCouple?.name]);
+
+  React.useEffect(() => {
+    if (currentUser?.full_name) {
+      setEditMyName(currentUser.full_name);
+    }
+  }, [currentUser?.full_name]);
   const [defaultCurrency, setDefaultCurrency] = useState<CurrencyCode>('EUR');
   const [inviteCodeInput, setInviteCodeInput] = useState('');
   const [copiedCode, setCopiedCode] = useState(false);
@@ -328,6 +336,46 @@ export const AuthWorkspacePage: React.FC<{ manageMode?: boolean }> = ({ manageMo
           <span>{t.common.logout}</span>
         </Button>
       </div>
+
+      {/* Dedicated Personal Display Name Editor Card (Current User Only) */}
+      <Card className="space-y-3">
+        <div>
+          <h2 className="font-bold text-base text-navy">
+            {lang === 'he' ? 'שם המשתמש שלי' : 'My Display Name'}
+          </h2>
+          <p className="text-xs text-navy/60">
+            {lang === 'he'
+              ? 'שינוי השם האישי שלך בלבד (לא משפיע על שאר השותפים בסביבה)'
+              : 'Updates only your own display name'}
+          </p>
+        </div>
+        <form
+          onSubmit={async (e) => {
+            e.preventDefault();
+            if (!editMyName.trim()) return;
+            try {
+              await updateProfileName(editMyName.trim());
+              notify(
+                lang === 'he' ? 'שם המשתמש שלך עודכן בהצלחה!' : 'Your display name was updated!',
+                'success'
+              );
+            } catch (err) {
+              handleError(err);
+            }
+          }}
+          className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5"
+        >
+          <Input
+            value={editMyName}
+            onChange={(e) => setEditMyName(e.target.value)}
+            placeholder={lang === 'he' ? 'הקלידו את השם שלכם...' : 'Enter your name...'}
+            required
+          />
+          <Button type="submit" className="shrink-0">
+            {lang === 'he' ? 'שמירת שם משתמש' : 'Save My Name'}
+          </Button>
+        </form>
+      </Card>
 
       {/* Dedicated Workspace Name Editor Card */}
       <Card className="space-y-3">

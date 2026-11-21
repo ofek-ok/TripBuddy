@@ -341,16 +341,21 @@ export const TripsPage: React.FC = () => {
   return (
     <div className="space-y-5">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-navy">{t.trips.title}</h1>
-          <p className="text-xs text-navy/65">
-            {lang === 'he'
-              ? 'נהלו את כל החופשות שלכם (כולל טיולים מרובי יעדים ומדינות), שכפלו מסלולים או העבירו לארכיון'
-              : 'Manage all your journeys (including multi-city & multi-country trips), duplicate itineraries or archive past trips'}
-          </p>
-        </div>
-        <Button onClick={openCreateModal}>
+      <div>
+        <h1 className="text-2xl font-bold text-navy">{t.trips.title}</h1>
+        <p className="text-xs text-navy/65">
+          {lang === 'he'
+            ? 'נהלו את כל החופשות שלכם (כולל טיולים מרובי יעדים ומדינות), שכפלו מסלולים או העבירו לארכיון'
+            : 'Manage all your journeys (including multi-city & multi-country trips), duplicate itineraries or archive past trips'}
+        </p>
+      </div>
+
+      {/* Sticky Action Bar */}
+      <div className="sticky top-[62px] z-20 -mx-1 px-2.5 py-2 rounded-2xl bg-surface/92 backdrop-blur-md border border-sand/25 shadow-soft flex items-center justify-between gap-2">
+        <span className="text-xs font-bold text-navy/75 ps-1">
+          {filteredTrips.length} {lang === 'he' ? 'טיולים' : 'trips'}
+        </span>
+        <Button size="sm" onClick={openCreateModal}>
           <Plus className="w-4 h-4" />
           <span>{t.trips.newTrip}</span>
         </Button>
