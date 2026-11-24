@@ -1,5 +1,6 @@
 import React, { Suspense, lazy } from 'react';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
+import { Analytics } from '@vercel/analytics/react';
 import { I18nProvider } from '@/app/providers/I18nProvider';
 import { ToastProvider } from '@/lib/errors/errorHandler';
 import { AppStoreProvider, useAppStore } from '@/app/providers/AppStoreProvider';
@@ -87,6 +88,7 @@ export const App: React.FC = () => {
         <AppStoreProvider>
           <BrowserRouter>
             <AppRoutes />
+            <Analytics />
           </BrowserRouter>
         </AppStoreProvider>
       </ToastProvider>
