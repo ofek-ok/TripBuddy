@@ -51,7 +51,7 @@ interface SmartPreset {
 
 const PACKING_CATEGORIES = [
   { id: 'Backpack', labelHe: 'תיק גב', labelEn: 'Backpack', icon: Backpack, color: 'bg-navy text-white' },
-  { id: 'Trolley', labelHe: 'טרולי (עלייה למטוס)', labelEn: 'Carry-on Trolley', icon: Luggage, color: 'bg-sand text-white' },
+  { id: 'Trolley', labelHe: 'טרולי', labelEn: 'Trolley', icon: Luggage, color: 'bg-sand text-white' },
   { id: 'Toiletry Bag', labelHe: 'תיק רחצה', labelEn: 'Toiletry Bag', icon: Sparkles, color: 'bg-sage text-navy' },
   { id: 'Suitcase', labelHe: 'מזוודה גדולה', labelEn: 'Main Suitcase', icon: Shirt, color: 'bg-navy/15 text-navy' },
 ];
