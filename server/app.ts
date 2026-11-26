@@ -899,7 +899,7 @@ app.delete('/api/days/:id', requireAuth, async (req: AuthenticatedRequest, res) 
     );
     for (let i = 0; i < rem.rows.length; i++) {
       await client.query('UPDATE itinerary_days SET day_number = $1 WHERE id = $2', [
-        -10000 - i,
+        10000 + i,
         rem.rows[i].id,
       ]);
     }
@@ -942,11 +942,11 @@ app.post('/api/trips/:tripId/days/reorder', requireAuth, async (req: Authenticat
     }
 
     await client.query('BEGIN');
-    // Phase 1: temporary day_number values to avoid unique constraint collisions
+    // Phase 1: temporary positive day_number values to avoid unique constraint collisions
     for (let i = 0; i < orderedDayIds.length; i++) {
       await client.query(
         'UPDATE itinerary_days SET day_number = $1 WHERE id = $2 AND trip_id = $3',
-        [-20000 - i, orderedDayIds[i], req.params.tripId]
+        [20000 + i, orderedDayIds[i], req.params.tripId]
       );
     }
     // Phase 2: assign each reordered day to its new chronological slot (day_number + date)
