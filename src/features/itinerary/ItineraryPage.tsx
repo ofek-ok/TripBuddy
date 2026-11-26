@@ -27,6 +27,8 @@ import {
 } from '@/types/database.types';
 import {
   ArrowDown,
+  ArrowLeft,
+  ArrowRight,
   ArrowUp,
   CalendarPlus,
   Clock,
@@ -64,6 +66,8 @@ export const ItineraryPage: React.FC = () => {
     updateDay,
     addDay,
     addPreFlightDay,
+    deleteDay,
+    reorderDays,
     createEvent,
     updateEvent,
     deleteEvent,
@@ -73,6 +77,7 @@ export const ItineraryPage: React.FC = () => {
   const { notify, handleError } = useToast();
 
   const [selectedDayId, setSelectedDayId] = useState<string>('');
+  const [draggingDayId, setDraggingDayId] = useState<string | null>(null);
   const [dayModalOpen, setDayModalOpen] = useState(false);
   const [dayLocation, setDayLocation] = useState('');
   const [dayNotes, setDayNotes] = useState('');
@@ -265,6 +270,54 @@ export const ItineraryPage: React.FC = () => {
     notify(lang === 'he' ? `הועתק: ${txt}` : `Copied: ${txt}`, 'info');
   };
 
+  const moveDayOrder = async (fromIdx: number, toIdx: number) => {
+    if (toIdx < 0 || toIdx >= activeDays.length || fromIdx === toIdx) return;
+    const ids = activeDays.map((d) => d.id);
+    const [moved] = ids.splice(fromIdx, 1);
+    ids.splice(toIdx, 0, moved);
+    try {
+      await reorderDays(ids);
+      setSelectedDayId(moved);
+      notify(lang === 'he' ? 'סדר הימים עודכן!' : 'Day order updated!', 'success');
+    } catch (err) {
+      handleError(err);
+    }
+  };
+
+  const handleDeleteSelectedDay = async () => {
+    if (!selectedDay) return;
+    if (activeDays.length <= 1) {
+      notify(
+        lang === 'he' ? 'חייב להישאר לפחות יום אחד במסלול' : 'At least one day must remain in the itinerary',
+        'error'
+      );
+      return;
+    }
+    const eventsCount = activeEvents.filter((e) => e.day_id === selectedDay.id).length;
+    const msg =
+      lang === 'he'
+        ? eventsCount > 0
+          ? `למחוק את "${getDayLabel(selectedDay)}" כולל ${eventsCount} פעילויות שמשובצות בו?`
+          : `למחוק את "${getDayLabel(selectedDay)}" מהמסלול?`
+        : eventsCount > 0
+          ? `Delete "${getDayLabel(selectedDay)}" and its ${eventsCount} scheduled activities?`
+          : `Delete "${getDayLabel(selectedDay)}" from itinerary?`;
+    if (!window.confirm(msg)) return;
+    try {
+      const idx = activeDays.findIndex((d) => d.id === selectedDay.id);
+      const fallbackDay = activeDays[idx > 0 ? idx - 1 : 1];
+      await deleteDay(selectedDay.id);
+      if (fallbackDay) setSelectedDayId(fallbackDay.id);
+      notify(lang === 'he' ? 'היום נמחק מהמסלול' : 'Day deleted from itinerary', 'success');
+    } catch (err) {
+      handleError(err);
+    }
+  };
+
+  const selectedDayIdx = selectedDay
+    ? activeDays.findIndex((d) => d.id === selectedDay.id)
+    : -1;
+
   return (
     <div className="space-y-5">
       {/* Header */}
@@ -289,7 +342,8 @@ export const ItineraryPage: React.FC = () => {
             size="sm"
             className="text-navy border border-navy/15 bg-ivory/70"
             onClick={async () => {
-              await addPreFlightDay();
+              const created = await addPreFlightDay();
+              if (created) setSelectedDayId(created.id);
               notify(
                 lang === 'he' ? 'נוסף יום התארגנות בארץ לפני הטיסה!' : 'Pre-flight home day added!',
                 'success'
@@ -299,7 +353,20 @@ export const ItineraryPage: React.FC = () => {
             <CalendarPlus className="w-3.5 h-3.5 text-sand" />
             <span>{lang === 'he' ? 'יום בארץ (לפני טיסה)' : 'Pre-Flight Day'}</span>
           </Button>
-          <Button variant="outline" size="sm" onClick={addDay}>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={async () => {
+              const created = await addDay();
+              if (created) setSelectedDayId(created.id);
+              notify(
+                lang === 'he'
+                  ? 'נוסף יום חדש — ניתן להזיז אותו קדימה או אחורה'
+                  : 'New day added — you can reorder it anytime',
+                'success'
+              );
+            }}
+          >
             <CalendarPlus className="w-4 h-4" />
             <span>{t.itinerary.addDay}</span>
           </Button>
@@ -310,20 +377,30 @@ export const ItineraryPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Horizontal Day Selector Pills */}
+      {/* Horizontal Day Selector Pills (Draggable to reorder!) */}
       <div className="flex items-center gap-2 overflow-x-auto pb-1.5">
-        {activeDays.map((day) => {
+        {activeDays.map((day, dayIdx) => {
           const isSelected = selectedDay?.id === day.id;
           const count = activeEvents.filter((e) => e.day_id === day.id).length;
           return (
             <button
               key={day.id}
+              draggable
+              onDragStart={() => setDraggingDayId(day.id)}
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={() => {
+                if (!draggingDayId || draggingDayId === day.id) return;
+                const fromIdx = activeDays.findIndex((d) => d.id === draggingDayId);
+                if (fromIdx !== -1) moveDayOrder(fromIdx, dayIdx);
+                setDraggingDayId(null);
+              }}
+              onDragEnd={() => setDraggingDayId(null)}
               onClick={() => setSelectedDayId(day.id)}
-              className={`px-4 py-2.5 rounded-2xl border text-start shrink-0 transition-all ${
+              className={`px-4 py-2.5 rounded-2xl border text-start shrink-0 transition-all cursor-pointer ${
                 isSelected
                   ? 'bg-navy text-white border-navy shadow-sm'
                   : 'bg-surface text-navy border-navy/10 hover:bg-ivory'
-              }`}
+              } ${draggingDayId === day.id ? 'opacity-50 scale-95' : ''}`}
             >
               <div className="flex items-center justify-between gap-3">
                 <span className="text-xs font-bold">
@@ -371,10 +448,44 @@ export const ItineraryPage: React.FC = () => {
               <p className="text-xs text-navy/70">{selectedDay.notes}</p>
             )}
           </div>
-          <Button variant="outline" size="sm" onClick={openEditDayModal}>
-            <Edit3 className="w-3.5 h-3.5" />
-            <span>{t.common.edit}</span>
-          </Button>
+          <div className="flex flex-wrap items-center gap-1.5 shrink-0">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={selectedDayIdx <= 0}
+              onClick={() => moveDayOrder(selectedDayIdx, selectedDayIdx - 1)}
+              title={lang === 'he' ? 'הזזת יום קדימה (מוקדם יותר בטיול)' : 'Move day earlier'}
+            >
+              {lang === 'he' ? <ArrowRight className="w-3.5 h-3.5" /> : <ArrowLeft className="w-3.5 h-3.5" />}
+              <span className="text-xs">{lang === 'he' ? 'הזז קדימה' : 'Earlier'}</span>
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={selectedDayIdx === -1 || selectedDayIdx >= activeDays.length - 1}
+              onClick={() => moveDayOrder(selectedDayIdx, selectedDayIdx + 1)}
+              title={lang === 'he' ? 'הזזת יום אחורה (מאוחר יותר בטיול)' : 'Move day later'}
+            >
+              <span className="text-xs">{lang === 'he' ? 'הזז אחורה' : 'Later'}</span>
+              {lang === 'he' ? <ArrowLeft className="w-3.5 h-3.5" /> : <ArrowRight className="w-3.5 h-3.5" />}
+            </Button>
+            <Button variant="outline" size="sm" onClick={openEditDayModal}>
+              <Edit3 className="w-3.5 h-3.5" />
+              <span>{t.common.edit}</span>
+            </Button>
+            {activeDays.length > 1 && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-red-600 hover:bg-red-50"
+                onClick={handleDeleteSelectedDay}
+                title={lang === 'he' ? 'מחיקת יום זה מהמסלול' : 'Delete this day'}
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">{lang === 'he' ? 'מחיקת יום' : 'Delete Day'}</span>
+              </Button>
+            )}
+          </div>
         </Card>
       )}
 

@@ -872,6 +872,102 @@ app.patch('/api/days/:id', requireAuth, async (req: AuthenticatedRequest, res) =
   }
 });
 
+app.delete('/api/days/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const client = await pool.connect();
+  try {
+    const [day] = await query<{ trip_id: string; day_number: number }>(
+      'SELECT trip_id, day_number FROM itinerary_days WHERE id = $1',
+      [req.params.id]
+    );
+    if (!day) { res.status(404).json({ error: 'Day not found' }); return; }
+    const coupleId = await assertTripAccess(req.userId!, day.trip_id);
+
+    await client.query('BEGIN');
+    // Remove auto-synced expenses for events belonging to this day
+    await client.query(
+      `DELETE FROM expenses WHERE source_event_id IN (
+         SELECT id FROM itinerary_events WHERE day_id = $1
+       )`,
+      [req.params.id]
+    );
+    await client.query('DELETE FROM itinerary_days WHERE id = $1', [req.params.id]);
+
+    // Re-number remaining regular days (day_number > 0) cleanly 1..N without unique conflicts
+    const rem = await client.query<{ id: string }>(
+      'SELECT id FROM itinerary_days WHERE trip_id = $1 AND day_number > 0 ORDER BY day_number ASC, date ASC',
+      [day.trip_id]
+    );
+    for (let i = 0; i < rem.rows.length; i++) {
+      await client.query('UPDATE itinerary_days SET day_number = $1 WHERE id = $2', [
+        -10000 - i,
+        rem.rows[i].id,
+      ]);
+    }
+    for (let i = 0; i < rem.rows.length; i++) {
+      await client.query('UPDATE itinerary_days SET day_number = $1, updated_at = now() WHERE id = $2', [
+        i + 1,
+        rem.rows[i].id,
+      ]);
+    }
+
+    await client.query('COMMIT');
+    broadcastCoupleUpdate(coupleId, 'day_deleted');
+    res.json({ ok: true });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    res.status(500).json({ error: (err as Error).message });
+  } finally {
+    client.release();
+  }
+});
+
+app.post('/api/trips/:tripId/days/reorder', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const client = await pool.connect();
+  try {
+    const coupleId = await assertTripAccess(req.userId!, req.params.tripId);
+    const { orderedDayIds } = req.body as { orderedDayIds: string[] };
+    if (!Array.isArray(orderedDayIds) || orderedDayIds.length === 0) {
+      res.status(400).json({ error: 'orderedDayIds array is required' });
+      return;
+    }
+
+    const currentRes = await client.query<{ id: string; day_number: number; date: string }>(
+      'SELECT id, day_number, date FROM itinerary_days WHERE trip_id = $1 ORDER BY day_number ASC, date ASC',
+      [req.params.tripId]
+    );
+    const slots = currentRes.rows.map((r) => ({ day_number: r.day_number, date: r.date }));
+    if (slots.length !== orderedDayIds.length) {
+      res.status(400).json({ error: 'orderedDayIds must include all days of the trip' });
+      return;
+    }
+
+    await client.query('BEGIN');
+    // Phase 1: temporary day_number values to avoid unique constraint collisions
+    for (let i = 0; i < orderedDayIds.length; i++) {
+      await client.query(
+        'UPDATE itinerary_days SET day_number = $1 WHERE id = $2 AND trip_id = $3',
+        [-20000 - i, orderedDayIds[i], req.params.tripId]
+      );
+    }
+    // Phase 2: assign each reordered day to its new chronological slot (day_number + date)
+    for (let i = 0; i < orderedDayIds.length; i++) {
+      await client.query(
+        'UPDATE itinerary_days SET day_number = $1, date = $2, updated_at = now() WHERE id = $3 AND trip_id = $4',
+        [slots[i].day_number, slots[i].date, orderedDayIds[i], req.params.tripId]
+      );
+    }
+    await client.query('COMMIT');
+
+    broadcastCoupleUpdate(coupleId, 'days_reordered');
+    res.json({ ok: true });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    res.status(500).json({ error: (err as Error).message });
+  } finally {
+    client.release();
+  }
+});
+
 const EVENT_TO_BUDGET_CAT: Record<string, string> = {
   Flight: 'Flights',
   Hotel: 'Accommodation',

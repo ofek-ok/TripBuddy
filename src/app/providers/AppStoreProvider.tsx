@@ -70,8 +70,10 @@ interface AppStoreContextValue {
 
   // Itinerary actions
   updateDay: (dayId: string, patch: Partial<ItineraryDay>) => Promise<void>;
-  addDay: () => Promise<void>;
-  addPreFlightDay: () => Promise<void>;
+  addDay: () => Promise<ItineraryDay | undefined>;
+  addPreFlightDay: () => Promise<ItineraryDay | undefined>;
+  deleteDay: (dayId: string) => Promise<void>;
+  reorderDays: (orderedDayIds: string[]) => Promise<void>;
   createEvent: (input: Omit<ItineraryEvent, 'id' | 'created_at' | 'updated_at' | 'sort_order'>) => Promise<void>;
   updateEvent: (eventId: string, patch: Partial<ItineraryEvent>) => Promise<void>;
   deleteEvent: (eventId: string) => Promise<void>;
@@ -542,8 +544,8 @@ export const AppStoreProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     await fetchWorkspace(true);
   };
 
-  const addDay = async () => {
-    if (!activeTrip) return;
+  const addDay = async (): Promise<ItineraryDay | undefined> => {
+    if (!activeTrip) return undefined;
     const maxDayNum =
       activeDays.length > 0 ? Math.max(...activeDays.map((d) => d.day_number)) : 0;
     const nextNumber = Math.max(1, maxDayNum + 1);
@@ -552,7 +554,7 @@ export const AppStoreProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     const nextDate = new Date(y, m - 1, d + 1);
     const dateStr = `${nextDate.getFullYear()}-${String(nextDate.getMonth() + 1).padStart(2, '0')}-${String(nextDate.getDate()).padStart(2, '0')}`;
 
-    await apiRequest(`/api/trips/${activeTrip.id}/days`, {
+    const created = await apiRequest<ItineraryDay>(`/api/trips/${activeTrip.id}/days`, {
       method: 'POST',
       body: JSON.stringify({
         day_number: nextNumber,
@@ -561,10 +563,11 @@ export const AppStoreProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       }),
     });
     await fetchWorkspace(true);
+    return created;
   };
 
-  const addPreFlightDay = async () => {
-    if (!activeTrip) return;
+  const addPreFlightDay = async (): Promise<ItineraryDay | undefined> => {
+    if (!activeTrip) return undefined;
     const minDayNum =
       activeDays.length > 0 ? Math.min(...activeDays.map((d) => d.day_number)) : 1;
     const preNumber = minDayNum <= 0 ? minDayNum - 1 : 0;
@@ -573,13 +576,28 @@ export const AppStoreProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     const prevDate = new Date(y, m - 1, d - 1);
     const dateStr = `${prevDate.getFullYear()}-${String(prevDate.getMonth() + 1).padStart(2, '0')}-${String(prevDate.getDate()).padStart(2, '0')}`;
 
-    await apiRequest(`/api/trips/${activeTrip.id}/days`, {
+    const created = await apiRequest<ItineraryDay>(`/api/trips/${activeTrip.id}/days`, {
       method: 'POST',
       body: JSON.stringify({
         day_number: preNumber,
         date: dateStr,
         location: 'ישראל (לפני הטיסה)',
       }),
+    });
+    await fetchWorkspace(true);
+    return created;
+  };
+
+  const deleteDay = async (dayId: string) => {
+    await apiRequest(`/api/days/${dayId}`, { method: 'DELETE' });
+    await fetchWorkspace(true);
+  };
+
+  const reorderDays = async (orderedDayIds: string[]) => {
+    if (!activeTrip || orderedDayIds.length === 0) return;
+    await apiRequest(`/api/trips/${activeTrip.id}/days/reorder`, {
+      method: 'POST',
+      body: JSON.stringify({ orderedDayIds }),
     });
     await fetchWorkspace(true);
   };
@@ -1000,6 +1018,8 @@ export const AppStoreProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         updateDay,
         addDay,
         addPreFlightDay,
+        deleteDay,
+        reorderDays,
         createEvent,
         updateEvent,
         deleteEvent,
