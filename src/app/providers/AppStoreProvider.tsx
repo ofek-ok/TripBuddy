@@ -10,6 +10,7 @@ import {
   Memory,
   PackingItem,
   PackingTemplate,
+  PackingTemplateItem,
   Place,
   Profile,
   ShoppingItem,
@@ -117,7 +118,9 @@ interface AppStoreContextValue {
   deletePackingItem: (itemId: string) => Promise<void>;
   reorderPackingItems: (orderedIds: string[]) => Promise<void>;
   saveCurrentPackingAsTemplate: (templateName: string) => Promise<void>;
+  createPackingTemplate: (templateName: string, items: PackingTemplateItem[]) => Promise<void>;
   applyPackingTemplate: (templateId: string) => Promise<void>;
+  applyPackingTemplateItems: (items: PackingTemplateItem[]) => Promise<number>;
   deletePackingTemplate: (templateId: string) => Promise<void>;
 
   // Places & Memories actions
@@ -832,25 +835,47 @@ export const AppStoreProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     await fetchWorkspace(true);
   };
 
-  const applyPackingTemplate = async (templateId: string) => {
-    if (!activeTrip) return;
-    const tpl = packingTemplates.find((t) => t.id === templateId);
-    if (!tpl) return;
-    for (const item of tpl.items) {
+  const createPackingTemplate = async (templateName: string, items: PackingTemplateItem[]) => {
+    await apiRequest('/api/packing-templates', {
+      method: 'POST',
+      body: JSON.stringify({ name: templateName, items }),
+    });
+    await fetchWorkspace(true);
+  };
+
+  const applyPackingTemplateItems = async (items: PackingTemplateItem[]): Promise<number> => {
+    if (!activeTrip || items.length === 0) return 0;
+    const existingNames = new Set(
+      activePackingItems.map((i) => i.item_name.trim().toLowerCase())
+    );
+    let added = 0;
+    for (const item of items) {
+      if (existingNames.has(item.item_name.trim().toLowerCase())) continue;
       await apiRequest('/api/packing-items', {
         method: 'POST',
         body: JSON.stringify({
           trip_id: activeTrip.id,
           item_name: item.item_name,
           category: item.category,
-          quantity: item.quantity,
+          quantity: item.quantity || 1,
           assigned_to: null,
           is_packed: false,
+          pack_stage: 0,
           notes: null,
         }),
       });
+      existingNames.add(item.item_name.trim().toLowerCase());
+      added++;
     }
     await fetchWorkspace(true);
+    return added;
+  };
+
+  const applyPackingTemplate = async (templateId: string) => {
+    if (!activeTrip) return;
+    const tpl = packingTemplates.find((t) => t.id === templateId);
+    if (!tpl) return;
+    await applyPackingTemplateItems(tpl.items);
   };
 
   const deletePackingTemplate = async (templateId: string) => {
@@ -1046,7 +1071,9 @@ export const AppStoreProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         deletePackingItem,
         reorderPackingItems,
         saveCurrentPackingAsTemplate,
+        createPackingTemplate,
         applyPackingTemplate,
+        applyPackingTemplateItems,
         deletePackingTemplate,
         createPlace,
         updatePlace,

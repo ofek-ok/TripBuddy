@@ -11,7 +11,12 @@ import {
   Select,
 } from '@/components/ui/primitives';
 import { formatCurrency } from '@/lib/utils/formatters';
-import { PackingItem, ShoppingItem } from '@/types/database.types';
+import {
+  PackingItem,
+  PackingTemplate,
+  PackingTemplateItem,
+  ShoppingItem,
+} from '@/types/database.types';
 import {
   ArrowDown,
   ArrowUp,
@@ -145,7 +150,8 @@ export const ListsPage: React.FC = () => {
     deletePackingItem,
     reorderPackingItems,
     saveCurrentPackingAsTemplate,
-    applyPackingTemplate,
+    createPackingTemplate,
+    applyPackingTemplateItems,
     deletePackingTemplate,
   } = useAppStore();
   const { notify, handleError } = useToast();
@@ -207,6 +213,33 @@ export const ListsPage: React.FC = () => {
 
   const [templateModalOpen, setTemplateModalOpen] = useState(false);
   const [templateName, setTemplateName] = useState('');
+
+  // Create custom permanent packing template from scratch
+  const [builderModalOpen, setBuilderModalOpen] = useState(false);
+  const [builderName, setBuilderName] = useState('');
+  const [builderItems, setBuilderItems] = useState<PackingTemplateItem[]>([]);
+  const [builderNewItemName, setBuilderNewItemName] = useState('');
+  const [builderNewItemBag, setBuilderNewItemBag] = useState('טרולי');
+  const [builderNewItemQty, setBuilderNewItemQty] = useState('1');
+
+  // Selective Template Picker (import whole template or just part of it!)
+  const [pickerTemplate, setPickerTemplate] = useState<PackingTemplate | null>(null);
+  const [selectedTemplateIndices, setSelectedTemplateIndices] = useState<Set<number>>(new Set());
+  const [isApplyingTemplate, setIsApplyingTemplate] = useState(false);
+
+  const openTemplatePicker = (tpl: PackingTemplate) => {
+    setPickerTemplate(tpl);
+    setSelectedTemplateIndices(new Set(tpl.items.map((_, idx) => idx)));
+  };
+
+  const toggleTemplateIndex = (idx: number) => {
+    setSelectedTemplateIndices((prev) => {
+      const next = new Set(prev);
+      if (next.has(idx)) next.delete(idx);
+      else next.add(idx);
+      return next;
+    });
+  };
 
   // Shopping State
   const [selectedListId, setSelectedListId] = useState<string>('');
@@ -798,44 +831,97 @@ export const ListsPage: React.FC = () => {
               })}
             </div>
 
-            {/* Saved Custom Couple Templates */}
-            {packingTemplates.length > 0 && (
-              <div className="flex items-center gap-2 overflow-x-auto pt-1">
-                <span className="text-xs font-semibold text-navy/60 shrink-0">
-                  {lang === 'he' ? 'התבניות ששמרתם:' : 'Your Saved Templates:'}
-                </span>
-                {packingTemplates.map((tpl) => (
-                  <div
-                    key={tpl.id}
-                    className="inline-flex items-center gap-1.5 pl-2 pr-3 py-1.5 rounded-xl bg-sage/20 border border-sage/40 text-xs font-semibold text-navy shrink-0"
+            {/* Permanent Reusable Packing Templates (Create + Selective Import Full or Partial) */}
+            <Card className="p-4 space-y-3 bg-gradient-to-br from-surface to-ivory/60 border-sand/25">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <h3 className="text-xs font-bold text-navy flex items-center gap-1.5">
+                    <BookmarkPlus className="w-4 h-4 text-sand" />
+                    <span>
+                      {lang === 'he'
+                        ? 'טמפלטים קבועים לאריזה (ייבוא מלא או חלקי)'
+                        : 'Reusable Packing Templates (Full or Partial Import)'}
+                    </span>
+                  </h3>
+                  <p className="text-[11px] text-navy/60 mt-0.5">
+                    {lang === 'he'
+                      ? 'הכינו רשימה קבועה פעם אחת, ובכל טיול בחרו אם לייבא את כולה או רק חלק מהפריטים'
+                      : 'Create a reusable list once, then import all or selected items into any trip'}
+                  </p>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      setBuilderName('');
+                      setBuilderItems([]);
+                      setBuilderNewItemName('');
+                      setBuilderNewItemBag(allAvailableBags[0] || (lang === 'he' ? 'טרולי' : 'Trolley'));
+                      setBuilderNewItemQty('1');
+                      setBuilderModalOpen(true);
+                    }}
                   >
-                    <button
-                      onClick={async () => {
-                        await applyPackingTemplate(tpl.id);
-                        notify(
-                          lang === 'he'
-                            ? `התבנית "${tpl.name}" נוספה למזוודה!`
-                            : `Loaded template "${tpl.name}"`,
-                          'success'
-                        );
-                      }}
-                      className="flex items-center gap-1.5 hover:underline"
-                    >
-                      <DownloadCloud className="w-3.5 h-3.5 text-navy" />
-                      <span>
-                        {tpl.name} ({tpl.items.length})
+                    <Plus className="w-3.5 h-3.5 text-sand" />
+                    <span>{lang === 'he' ? 'יצירת טמפלט קבוע' : 'New Template'}</span>
+                  </Button>
+                  {totalPackCount > 0 && (
+                    <Button size="sm" variant="ghost" onClick={() => setTemplateModalOpen(true)}>
+                      <BookmarkPlus className="w-3.5 h-3.5 text-navy/70" />
+                      <span className="hidden sm:inline">
+                        {lang === 'he' ? 'שמירת הרשימה הנוכחית' : 'Save Current List'}
                       </span>
-                    </button>
-                    <button
-                      onClick={() => deletePackingTemplate(tpl.id)}
-                      className="text-navy/40 hover:text-red-600 ms-1"
-                    >
-                      <Trash2 className="w-3 h-3" />
-                    </button>
-                  </div>
-                ))}
+                    </Button>
+                  )}
+                </div>
               </div>
-            )}
+
+              {packingTemplates.length === 0 ? (
+                <div className="text-xs text-navy/50 bg-ivory/70 rounded-xl px-3.5 py-2.5">
+                  {lang === 'he'
+                    ? 'עדיין לא יצרתם טמפלט קבוע — לחצו על "יצירת טמפלט קבוע" כדי להכין רשימת אריזה לשימוש חוזר.'
+                    : 'No saved templates yet — click "New Template" to create a reusable packing list.'}
+                </div>
+              ) : (
+                <div className="flex flex-wrap items-center gap-2">
+                  {packingTemplates.map((tpl) => (
+                    <div
+                      key={tpl.id}
+                      className="inline-flex items-center gap-1.5 ps-3 pe-2 py-2 rounded-xl bg-surface border border-sand/35 shadow-xs text-xs font-semibold text-navy"
+                    >
+                      <button
+                        type="button"
+                        onClick={() => openTemplatePicker(tpl)}
+                        className="flex items-center gap-1.5 hover:text-sand transition-colors"
+                      >
+                        <DownloadCloud className="w-3.5 h-3.5 text-sand" />
+                        <span>
+                          {tpl.name} ({tpl.items.length})
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (
+                            window.confirm(
+                              lang === 'he'
+                                ? `למחוק את הטמפלט "${tpl.name}"?`
+                                : `Delete template "${tpl.name}"?`
+                            )
+                          ) {
+                            deletePackingTemplate(tpl.id);
+                          }
+                        }}
+                        className="p-1 text-navy/35 hover:text-red-600 rounded-md ms-1"
+                        title={t.common.delete}
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </Card>
           </div>
 
           {/* Filter Pills: All / Still Need to Pack / Packed */}
@@ -1607,6 +1693,244 @@ export const ListsPage: React.FC = () => {
             {t.common.save}
           </Button>
         </form>
+      </ModalDrawer>
+
+      {/* Create Permanent Packing Template Builder Drawer */}
+      <ModalDrawer
+        open={builderModalOpen}
+        onClose={() => setBuilderModalOpen(false)}
+        title={lang === 'he' ? 'יצירת טמפלט אריזה קבוע' : 'Create Reusable Packing Template'}
+      >
+        <div className="space-y-4">
+          <Input
+            label={lang === 'he' ? 'שם הטמפלט' : 'Template Name'}
+            required
+            value={builderName}
+            onChange={(e) => setBuilderName(e.target.value)}
+            placeholder={lang === 'he' ? 'למשל: ציוד חובה לכל טיסה ✈️' : 'e.g., Flight Essentials ✈️'}
+          />
+
+          {/* Add items into the template */}
+          <div className="p-3 rounded-2xl bg-ivory/70 border border-navy/10 space-y-2.5">
+            <div className="text-xs font-bold text-navy">
+              {lang === 'he' ? 'הוספת פריטים לטמפלט:' : 'Add items to template:'}
+            </div>
+            <Input
+              value={builderNewItemName}
+              onChange={(e) => setBuilderNewItemName(e.target.value)}
+              placeholder={lang === 'he' ? 'שם הפריט (למשל: מטען, דרכון, מברשת שיניים)' : 'Item name'}
+            />
+            <div className="grid grid-cols-3 gap-2">
+              <div className="col-span-2">
+                <Input
+                  value={builderNewItemBag}
+                  onChange={(e) => setBuilderNewItemBag(e.target.value)}
+                  placeholder={lang === 'he' ? 'כבודה (למשל: תיק גב / טרולי)' : 'Bag name'}
+                />
+              </div>
+              <Input
+                type="number"
+                min="1"
+                value={builderNewItemQty}
+                onChange={(e) => setBuilderNewItemQty(e.target.value)}
+                placeholder="1"
+              />
+            </div>
+            <Button
+              type="button"
+              size="sm"
+              variant="secondary"
+              className="w-full"
+              onClick={() => {
+                if (!builderNewItemName.trim()) return;
+                setBuilderItems((prev) => [
+                  ...prev,
+                  {
+                    item_name: builderNewItemName.trim(),
+                    category: builderNewItemBag.trim() || (lang === 'he' ? 'טרולי' : 'Trolley'),
+                    quantity: Math.max(1, Number(builderNewItemQty) || 1),
+                  },
+                ]);
+                setBuilderNewItemName('');
+                setBuilderNewItemQty('1');
+              }}
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>{lang === 'he' ? 'הוספת פריט לרשימת הטמפלט' : 'Add Item to Template'}</span>
+            </Button>
+          </div>
+
+          {/* Current draft items in template */}
+          {builderItems.length > 0 && (
+            <div className="space-y-1.5 max-h-52 overflow-y-auto">
+              <div className="text-xs font-bold text-navy/70">
+                {lang === 'he' ? `פריטים בטמפלט (${builderItems.length}):` : `Template items (${builderItems.length}):`}
+              </div>
+              {builderItems.map((it, idx) => (
+                <div
+                  key={`${it.item_name}-${idx}`}
+                  className="flex items-center justify-between gap-2 px-3 py-2 rounded-xl bg-surface border border-navy/10 text-xs"
+                >
+                  <div className="min-w-0">
+                    <span className="font-bold text-navy">{it.item_name}</span>
+                    <span className="text-navy/55 ms-2">
+                      ({it.category} • ×{it.quantity})
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setBuilderItems((prev) => prev.filter((_, i) => i !== idx))
+                    }
+                    className="text-red-500 hover:text-red-700 p-1"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <Button
+            type="button"
+            className="w-full"
+            disabled={!builderName.trim() || builderItems.length === 0}
+            onClick={async () => {
+              try {
+                await createPackingTemplate(builderName.trim(), builderItems);
+                setBuilderModalOpen(false);
+                notify(
+                  lang === 'he' ? 'טמפלט האריזה הקבוע נשמר!' : 'Permanent packing template saved!',
+                  'success'
+                );
+              } catch (err) {
+                handleError(err);
+              }
+            }}
+          >
+            {lang === 'he' ? `שמירת טמפלט (${builderItems.length} פריטים)` : `Save Template (${builderItems.length} items)`}
+          </Button>
+        </div>
+      </ModalDrawer>
+
+      {/* Selective Template Import Drawer (Use Full Template or Part of It!) */}
+      <ModalDrawer
+        open={Boolean(pickerTemplate)}
+        onClose={() => setPickerTemplate(null)}
+        title={
+          pickerTemplate
+            ? lang === 'he'
+              ? `ייבוא מהטמפלט: ${pickerTemplate.name}`
+              : `Import from: ${pickerTemplate.name}`
+            : ''
+        }
+      >
+        {pickerTemplate && (
+          <div className="space-y-3.5">
+            <div className="flex items-center justify-between gap-2 text-xs">
+              <span className="text-navy/70 font-medium">
+                {lang === 'he'
+                  ? 'בחרו אילו פריטים לייבא לטיול הנוכחי (הכול או רק חלק):'
+                  : 'Select which items to import into this trip (all or partial):'}
+              </span>
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={() =>
+                    setSelectedTemplateIndices(new Set(pickerTemplate.items.map((_, i) => i)))
+                  }
+                  className="font-bold text-sand hover:underline"
+                >
+                  {lang === 'he' ? 'בחר הכול' : 'Select All'}
+                </button>
+                <span className="text-navy/30">|</span>
+                <button
+                  type="button"
+                  onClick={() => setSelectedTemplateIndices(new Set())}
+                  className="font-semibold text-navy/60 hover:underline"
+                >
+                  {lang === 'he' ? 'נקה' : 'Clear'}
+                </button>
+              </div>
+            </div>
+
+            <div className="space-y-1.5 max-h-72 overflow-y-auto pe-1">
+              {pickerTemplate.items.map((item, idx) => {
+                const isChecked = selectedTemplateIndices.has(idx);
+                const meta = getCategoryMeta(item.category);
+                return (
+                  <button
+                    key={`${item.item_name}-${idx}`}
+                    type="button"
+                    onClick={() => toggleTemplateIndex(idx)}
+                    className={`w-full px-3 py-2.5 rounded-xl border flex items-center justify-between gap-3 text-start transition-all ${
+                      isChecked
+                        ? 'bg-sand/10 border-sand/40'
+                        : 'bg-surface border-navy/10 opacity-60'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div
+                        className={`w-5 h-5 rounded-lg flex items-center justify-center border shrink-0 ${
+                          isChecked
+                            ? 'bg-sand border-sand text-white'
+                            : 'border-navy/30 bg-ivory'
+                        }`}
+                      >
+                        {isChecked && <Check className="w-3.5 h-3.5" />}
+                      </div>
+                      <span className="text-sm font-semibold text-navy truncate">
+                        {item.item_name}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <Badge variant="ivory">
+                        {lang === 'he' ? meta.labelHe : meta.labelEn}
+                      </Badge>
+                      <span className="text-xs font-bold text-navy/60">×{item.quantity}</span>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+
+            <Button
+              type="button"
+              className="w-full"
+              disabled={selectedTemplateIndices.size === 0 || isApplyingTemplate}
+              onClick={async () => {
+                try {
+                  setIsApplyingTemplate(true);
+                  const chosen = pickerTemplate.items.filter((_, idx) =>
+                    selectedTemplateIndices.has(idx)
+                  );
+                  chosen.forEach((it) => handleAddCustomBag(it.category));
+                  const added = await applyPackingTemplateItems(chosen);
+                  setPickerTemplate(null);
+                  notify(
+                    lang === 'he'
+                      ? `יובאו ${added} פריטים מהטמפלט "${pickerTemplate.name}"!`
+                      : `Imported ${added} items from "${pickerTemplate.name}"!`,
+                    'success'
+                  );
+                } catch (err) {
+                  handleError(err);
+                } finally {
+                  setIsApplyingTemplate(false);
+                }
+              }}
+            >
+              <DownloadCloud className="w-4 h-4" />
+              <span>
+                {isApplyingTemplate
+                  ? t.common.loading
+                  : lang === 'he'
+                    ? `ייבוא ${selectedTemplateIndices.size} פריטים נבחרים לטיול`
+                    : `Import ${selectedTemplateIndices.size} Selected Items`}
+              </span>
+            </Button>
+          </div>
+        )}
       </ModalDrawer>
 
       {/* Save Packing Template Drawer */}
