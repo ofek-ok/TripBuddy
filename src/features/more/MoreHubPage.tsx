@@ -6,6 +6,7 @@ import { Card } from '@/components/ui/primitives';
 import {
   ChevronLeft,
   ChevronRight,
+  Compass,
   FolderLock,
   HeartHandshake,
   ListChecks,
@@ -17,6 +18,7 @@ import {
 export const MoreHubPage: React.FC = () => {
   const { lang, dir, t } = useI18n();
   const {
+    trips,
     activeDocuments,
     activeTasks,
     activePackingItems,
@@ -29,6 +31,17 @@ export const MoreHubPage: React.FC = () => {
   const ArrowIcon = dir === 'rtl' ? ChevronLeft : ChevronRight;
 
   const modules = [
+    {
+      to: '/trips',
+      title: t.nav.trips,
+      subtitle:
+        lang === 'he'
+          ? 'ניהול כל הטיולים, ריבוי יעדים, עריכת תאריכים ותמונות נושא'
+          : 'Manage all trips, multi-destination stops, dates and cover photos',
+      count: trips.length,
+      icon: Compass,
+      color: 'bg-sand text-white',
+    },
     {
       to: '/documents',
       title: t.nav.documents,

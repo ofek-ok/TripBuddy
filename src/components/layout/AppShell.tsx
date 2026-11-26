@@ -54,8 +54,16 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
     { to: '/workspace', label: t.nav.settings, icon: HeartHandshake },
   ];
 
-  const isMoreRouteActive = secondaryNavItems.some((item) =>
-    location.pathname.startsWith(item.to)
+  const mobileNavItems = [
+    { to: '/', label: t.nav.dashboard, icon: Home, exact: true },
+    { to: '/tasks', label: t.nav.tasks, icon: ListChecks },
+    { to: '/itinerary', label: t.nav.itinerary, icon: CalendarRange },
+    { to: '/budget', label: t.nav.budget, icon: Wallet },
+    { to: '/more', label: t.nav.more, icon: LayoutGrid },
+  ];
+
+  const isMoreRouteActive = ['/trips', '/documents', '/lists', '/places', '/memories', '/workspace'].some(
+    (prefix) => location.pathname.startsWith(prefix)
   );
 
   return (
@@ -223,7 +231,7 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
         className="md:hidden fixed bottom-0 inset-x-0 z-30 bg-surface/95 backdrop-blur-md border-t border-navy/10 pb-safe"
       >
         <div className="grid grid-cols-5 h-16 max-w-md mx-auto">
-          {mainNavItems.map((item) => {
+          {mobileNavItems.map((item) => {
             const Icon = item.icon;
             const customActive = item.to === '/more' ? isMoreRouteActive : undefined;
             return (
