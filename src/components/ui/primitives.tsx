@@ -2,6 +2,7 @@ import React, { useRef } from 'react';
 import { cn } from '@/lib/utils/cn';
 import { X } from 'lucide-react';
 import { EmojiPickerButton } from '@/components/ui/EmojiPickerButton';
+import { DatePickerInput } from '@/components/ui/DatePickerInput';
 
 export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: 'primary' | 'secondary' | 'sand' | 'outline' | 'ghost' | 'danger';
@@ -117,6 +118,33 @@ export const Input = React.forwardRef<
     if (typeof ref === 'function') ref(node);
     else if (ref) ref.current = node;
   };
+
+  if (type === 'date') {
+    return (
+      <div className="w-full space-y-1.5">
+        {label && <label className="block text-xs font-semibold text-navy/80">{label}</label>}
+        <DatePickerInput
+          value={String(value ?? '')}
+          min={props.min ? String(props.min) : undefined}
+          max={props.max ? String(props.max) : undefined}
+          disabled={disabled}
+          required={props.required}
+          className={className}
+          error={error}
+          onChange={(nextIso) => {
+            if (onChange) {
+              const syntheticEvent = {
+                target: { value: nextIso },
+                currentTarget: { value: nextIso },
+              } as React.ChangeEvent<HTMLInputElement>;
+              onChange(syntheticEvent);
+            }
+          }}
+        />
+        {error && <p className="text-xs text-red-600">{error}</p>}
+      </div>
+    );
+  }
 
   return (
     <div className="w-full space-y-1.5">

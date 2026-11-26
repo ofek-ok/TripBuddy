@@ -210,6 +210,7 @@ export const ListsPage: React.FC = () => {
   const [packQuantity, setPackQuantity] = useState('1');
   const [packAssignee, setPackAssignee] = useState('');
   const [draggingPackId, setDraggingPackId] = useState<string | null>(null);
+  const [hoverPackId, setHoverPackId] = useState<string | null>(null);
 
   const [templateModalOpen, setTemplateModalOpen] = useState(false);
   const [templateName, setTemplateName] = useState('');
@@ -253,6 +254,7 @@ export const ListsPage: React.FC = () => {
   const [shopAssignee, setShopAssignee] = useState('');
   const [quickShopInput, setQuickShopInput] = useState('');
   const [draggingShopId, setDraggingShopId] = useState<string | null>(null);
+  const [hoverShopId, setHoverShopId] = useState<string | null>(null);
 
   useEffect(() => {
     if (
@@ -1084,30 +1086,67 @@ export const ListsPage: React.FC = () => {
                             return (
                               <div
                                 key={item.id}
+                                data-pack-id={item.id}
                                 draggable
                                 onDragStart={() => setDraggingPackId(item.id)}
-                                onDragOver={(e) => e.preventDefault()}
+                                onDragOver={(e) => {
+                                  e.preventDefault();
+                                  if (draggingPackId && draggingPackId !== item.id) {
+                                    setHoverPackId(item.id);
+                                  }
+                                }}
                                 onDrop={() => {
                                   if (!draggingPackId || draggingPackId === item.id) return;
                                   const fromIdx = items.findIndex((x) => x.id === draggingPackId);
                                   if (fromIdx !== -1) movePackingItem(items, fromIdx, idx);
                                   setDraggingPackId(null);
+                                  setHoverPackId(null);
                                 }}
-                                onDragEnd={() => setDraggingPackId(null)}
+                                onDragEnd={() => {
+                                  setDraggingPackId(null);
+                                  setHoverPackId(null);
+                                }}
                                 className={`py-2 px-2 rounded-xl flex items-center justify-between gap-1.5 transition-all border ${
-                                  stage === 2
-                                    ? 'bg-sand/15 border-sand/35'
-                                    : stage === 1
-                                      ? 'bg-ivory/50 border-navy/10'
-                                      : 'border-transparent hover:bg-ivory/40'
+                                  hoverPackId === item.id
+                                    ? 'ring-2 ring-sand bg-sand/15 border-sand'
+                                    : draggingPackId === item.id
+                                      ? 'opacity-50 scale-[0.98] border-sand/50 bg-ivory'
+                                      : stage === 2
+                                        ? 'bg-sand/15 border-sand/35'
+                                        : stage === 1
+                                          ? 'bg-ivory/50 border-navy/10'
+                                          : 'border-transparent hover:bg-ivory/40'
                                 }`}
                               >
                                 <div className="flex items-center gap-1.5 min-w-0 flex-1">
                                   <span
-                                    className="cursor-grab text-navy/25 hover:text-navy/60 shrink-0"
-                                    title={lang === 'he' ? 'גרירה לשינוי סדר' : 'Drag to reorder'}
+                                    onTouchStart={() => setDraggingPackId(item.id)}
+                                    onTouchMove={(e) => {
+                                      const touch = e.touches[0];
+                                      if (!touch) return;
+                                      const el = document
+                                        .elementFromPoint(touch.clientX, touch.clientY)
+                                        ?.closest('[data-pack-id]') as HTMLElement | null;
+                                      const targetId = el?.dataset.packId || null;
+                                      if (targetId && targetId !== draggingPackId) {
+                                        setHoverPackId(targetId);
+                                      }
+                                    }}
+                                    onTouchEnd={() => {
+                                      if (draggingPackId && hoverPackId && draggingPackId !== hoverPackId) {
+                                        const fromIdx = items.findIndex((x) => x.id === draggingPackId);
+                                        const toIdx = items.findIndex((x) => x.id === hoverPackId);
+                                        if (fromIdx !== -1 && toIdx !== -1) {
+                                          movePackingItem(items, fromIdx, toIdx);
+                                        }
+                                      }
+                                      setDraggingPackId(null);
+                                      setHoverPackId(null);
+                                    }}
+                                    className="touch-none cursor-grab active:cursor-grabbing p-1 text-navy/35 hover:text-sand shrink-0"
+                                    title={lang === 'he' ? 'גרירה לשינוי סדר (מובייל ומחשב)' : 'Drag to reorder'}
                                   >
-                                    <GripVertical className="w-3.5 h-3.5" />
+                                    <GripVertical className="w-4 h-4" />
                                   </span>
 
                                   <button
@@ -1408,24 +1447,63 @@ export const ListsPage: React.FC = () => {
                 return (
                   <Card
                     key={item.id}
+                    data-shop-id={item.id}
                     draggable
                     onDragStart={() => setDraggingShopId(item.id)}
-                    onDragOver={(e) => e.preventDefault()}
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      if (draggingShopId && draggingShopId !== item.id) {
+                        setHoverShopId(item.id);
+                      }
+                    }}
                     onDrop={() => {
                       if (!draggingShopId || draggingShopId === item.id) return;
                       const fromIdx = currentListItems.findIndex((x) => x.id === draggingShopId);
                       if (fromIdx !== -1) moveShoppingItem(currentListItems, fromIdx, idx);
                       setDraggingShopId(null);
+                      setHoverShopId(null);
                     }}
-                    onDragEnd={() => setDraggingShopId(null)}
+                    onDragEnd={() => {
+                      setDraggingShopId(null);
+                      setHoverShopId(null);
+                    }}
                     className={`p-3.5 flex items-center justify-between gap-2 transition-all ${
-                      item.is_purchased ? 'bg-sand/10 border-sand/30' : ''
+                      hoverShopId === item.id
+                        ? 'ring-2 ring-sand bg-sand/15 border-sand'
+                        : draggingShopId === item.id
+                          ? 'opacity-50 scale-[0.98]'
+                          : item.is_purchased
+                            ? 'bg-sand/10 border-sand/30'
+                            : ''
                     }`}
                   >
                     <div className="flex items-center gap-2 flex-1 min-w-0">
                       <span
-                        className="cursor-grab text-navy/25 hover:text-navy/60 shrink-0"
-                        title={lang === 'he' ? 'גרירה לשינוי סדר' : 'Drag to reorder'}
+                        onTouchStart={() => setDraggingShopId(item.id)}
+                        onTouchMove={(e) => {
+                          const touch = e.touches[0];
+                          if (!touch) return;
+                          const el = document
+                            .elementFromPoint(touch.clientX, touch.clientY)
+                            ?.closest('[data-shop-id]') as HTMLElement | null;
+                          const targetId = el?.dataset.shopId || null;
+                          if (targetId && targetId !== draggingShopId) {
+                            setHoverShopId(targetId);
+                          }
+                        }}
+                        onTouchEnd={() => {
+                          if (draggingShopId && hoverShopId && draggingShopId !== hoverShopId) {
+                            const fromIdx = currentListItems.findIndex((x) => x.id === draggingShopId);
+                            const toIdx = currentListItems.findIndex((x) => x.id === hoverShopId);
+                            if (fromIdx !== -1 && toIdx !== -1) {
+                              moveShoppingItem(currentListItems, fromIdx, toIdx);
+                            }
+                          }
+                          setDraggingShopId(null);
+                          setHoverShopId(null);
+                        }}
+                        className="touch-none cursor-grab active:cursor-grabbing p-1 text-navy/35 hover:text-sand shrink-0"
+                        title={lang === 'he' ? 'גרירה לשינוי סדר (מובייל ומחשב)' : 'Drag to reorder'}
                       >
                         <GripVertical className="w-4 h-4" />
                       </span>
