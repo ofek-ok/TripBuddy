@@ -31,7 +31,7 @@ export const TasksPage: React.FC = () => {
   } = useAppStore();
   const { notify, handleError } = useToast();
 
-  const [statusFilter, setStatusFilter] = useState<string>('ALL');
+  const [statusFilter, setStatusFilter] = useState<string>('OPEN');
   const [assigneeFilter, setAssigneeFilter] = useState<string>('ALL');
   const [modalOpen, setModalOpen] = useState(false);
   const [editingTask, setEditingTask] = useState<TripTask | null>(null);
@@ -66,7 +66,8 @@ export const TasksPage: React.FC = () => {
 
   const filteredTasks = useMemo(() => {
     return activeTasks.filter((tk) => {
-      if (statusFilter !== 'ALL' && tk.status !== statusFilter) return false;
+      if (statusFilter === 'OPEN' && tk.status === 'Completed') return false;
+      if (statusFilter !== 'ALL' && statusFilter !== 'OPEN' && tk.status !== statusFilter) return false;
       if (assigneeFilter !== 'ALL' && tk.assigned_to !== assigneeFilter) return false;
       return true;
     });
@@ -160,6 +161,9 @@ export const TasksPage: React.FC = () => {
       {/* Filters */}
       <Card className="p-3.5 grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+          <option value="OPEN">
+            {lang === 'he' ? 'לא בוצעו עדיין (פתוחות)' : 'Not Completed Yet (Open)'}
+          </option>
           <option value="ALL">{t.common.all}</option>
           {STATUSES.map((st) => (
             <option key={st} value={st}>
