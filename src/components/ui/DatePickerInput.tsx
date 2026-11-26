@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Calendar, ChevronLeft, ChevronRight } from 'lucide-react';
+import { createPortal } from 'react-dom';
+import { Calendar, ChevronLeft, ChevronRight, X } from 'lucide-react';
 import { cn } from '@/lib/utils/cn';
 
 const HE_MONTHS = [
@@ -77,18 +78,11 @@ export const DatePickerInput: React.FC<DatePickerInputProps> = ({
 
   useEffect(() => {
     if (!open) return;
-    const handleOutside = (e: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
-        setOpen(false);
-      }
-    };
     const handleKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') setOpen(false);
     };
-    document.addEventListener('mousedown', handleOutside);
     document.addEventListener('keydown', handleKey);
     return () => {
-      document.removeEventListener('mousedown', handleOutside);
       document.removeEventListener('keydown', handleKey);
     };
   }, [open]);
@@ -169,99 +163,130 @@ export const DatePickerInput: React.FC<DatePickerInputProps> = ({
         <Calendar className="w-4 h-4 text-sand shrink-0" />
       </button>
 
-      {open && (
-        <div className="absolute start-0 top-full mt-1.5 z-50 w-72 rounded-2xl bg-surface border border-sand/30 shadow-xl p-3 space-y-2.5">
-          {/* Month & Year Navigation — Clear, Intuitive Previous / Next */}
-          <div className="flex items-center justify-between gap-1">
-            <button
-              type="button"
-              onClick={goPrevMonth}
-              title={isHe ? 'חודש קודם' : 'Previous month'}
-              className="h-8 px-2 rounded-xl bg-ivory hover:bg-sand/20 text-navy flex items-center gap-0.5 text-[11px] font-bold transition-colors"
+      {open &&
+        typeof document !== 'undefined' &&
+        createPortal(
+          <div
+            className="fixed inset-0 z-[100] flex items-center justify-center bg-navy/35 backdrop-blur-[2px] p-4"
+            onMouseDown={(e) => {
+              if (e.target === e.currentTarget) setOpen(false);
+            }}
+          >
+            <div
+              dir={isHe ? 'rtl' : 'ltr'}
+              className="w-full max-w-[320px] rounded-3xl bg-surface border border-sand/30 shadow-2xl p-4 space-y-3"
             >
-              {isHe ? <ChevronRight className="w-4 h-4 text-sand" /> : <ChevronLeft className="w-4 h-4 text-sand" />}
-              <span>{isHe ? 'קודם' : 'Prev'}</span>
-            </button>
-
-            <div className="text-xs font-extrabold text-navy text-center">
-              {(isHe ? HE_MONTHS : EN_MONTHS)[viewMonth]} {viewYear}
-            </div>
-
-            <button
-              type="button"
-              onClick={goNextMonth}
-              title={isHe ? 'חודש הבא' : 'Next month'}
-              className="h-8 px-2 rounded-xl bg-ivory hover:bg-sand/20 text-navy flex items-center gap-0.5 text-[11px] font-bold transition-colors"
-            >
-              <span>{isHe ? 'הבא' : 'Next'}</span>
-              {isHe ? <ChevronLeft className="w-4 h-4 text-sand" /> : <ChevronRight className="w-4 h-4 text-sand" />}
-            </button>
-          </div>
-
-          {/* Weekday Headers */}
-          <div className="grid grid-cols-7 gap-1 text-center">
-            {(isHe ? HE_DAYS : EN_DAYS).map((d) => (
-              <div key={d} className="text-[10px] font-bold text-navy/50 py-1">
-                {d}
-              </div>
-            ))}
-          </div>
-
-          {/* Days Grid */}
-          <div className="grid grid-cols-7 gap-1">
-            {calendarCells.map((day, idx) => {
-              if (day === null) return <div key={`empty-${idx}`} />;
-              const iso = toIsoDate(viewYear, viewMonth, day);
-              const isSelected = value === iso;
-              const isToday = iso === todayIso;
-              const isDisabled = isDateDisabled(iso);
-              return (
+              {/* Month & Year Navigation — Clear, Intuitive Previous / Next */}
+              <div className="flex items-center justify-between gap-1">
                 <button
-                  key={iso}
                   type="button"
-                  disabled={isDisabled}
-                  onClick={() => selectDate(iso)}
-                  className={cn(
-                    'h-8 rounded-xl text-xs font-semibold transition-all',
-                    isSelected
-                      ? 'bg-sand text-white font-bold shadow-xs'
-                      : isToday
-                        ? 'bg-navy/10 text-navy font-bold ring-1 ring-sand/60'
-                        : 'text-navy hover:bg-ivory',
-                    isDisabled && 'opacity-25 pointer-events-none'
-                  )}
+                  onClick={goPrevMonth}
+                  title={isHe ? 'חודש קודם' : 'Previous month'}
+                  className="h-9 px-2.5 rounded-xl bg-ivory hover:bg-sand/20 text-navy flex items-center gap-0.5 text-xs font-bold transition-colors"
                 >
-                  {day}
+                  {isHe ? (
+                    <ChevronRight className="w-4 h-4 text-sand" />
+                  ) : (
+                    <ChevronLeft className="w-4 h-4 text-sand" />
+                  )}
+                  <span>{isHe ? 'קודם' : 'Prev'}</span>
                 </button>
-              );
-            })}
-          </div>
 
-          {/* Footer: Today + Clear */}
-          <div className="pt-2 border-t border-navy/10 flex items-center justify-between text-xs">
-            <button
-              type="button"
-              disabled={isDateDisabled(todayIso)}
-              onClick={() => selectDate(todayIso)}
-              className="font-bold text-sand hover:underline disabled:opacity-35"
-            >
-              {isHe ? 'היום' : 'Today'}
-            </button>
-            {!required && value && (
-              <button
-                type="button"
-                onClick={() => {
-                  onChange?.('');
-                  setOpen(false);
-                }}
-                className="font-semibold text-navy/55 hover:text-red-600"
-              >
-                {isHe ? 'ניקוי' : 'Clear'}
-              </button>
-            )}
-          </div>
-        </div>
-      )}
+                <div className="text-sm font-extrabold text-navy text-center">
+                  {(isHe ? HE_MONTHS : EN_MONTHS)[viewMonth]} {viewYear}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={goNextMonth}
+                  title={isHe ? 'חודש הבא' : 'Next month'}
+                  className="h-9 px-2.5 rounded-xl bg-ivory hover:bg-sand/20 text-navy flex items-center gap-0.5 text-xs font-bold transition-colors"
+                >
+                  <span>{isHe ? 'הבא' : 'Next'}</span>
+                  {isHe ? (
+                    <ChevronLeft className="w-4 h-4 text-sand" />
+                  ) : (
+                    <ChevronRight className="w-4 h-4 text-sand" />
+                  )}
+                </button>
+              </div>
+
+              {/* Weekday Headers */}
+              <div className="grid grid-cols-7 gap-1 text-center">
+                {(isHe ? HE_DAYS : EN_DAYS).map((d) => (
+                  <div key={d} className="text-[11px] font-bold text-navy/50 py-1">
+                    {d}
+                  </div>
+                ))}
+              </div>
+
+              {/* Days Grid */}
+              <div className="grid grid-cols-7 gap-1">
+                {calendarCells.map((day, idx) => {
+                  if (day === null) return <div key={`empty-${idx}`} />;
+                  const iso = toIsoDate(viewYear, viewMonth, day);
+                  const isSelected = value === iso;
+                  const isToday = iso === todayIso;
+                  const isDisabled = isDateDisabled(iso);
+                  return (
+                    <button
+                      key={iso}
+                      type="button"
+                      disabled={isDisabled}
+                      onClick={() => selectDate(iso)}
+                      className={cn(
+                        'h-9 rounded-xl text-xs font-semibold transition-all',
+                        isSelected
+                          ? 'bg-sand text-white font-bold shadow-xs'
+                          : isToday
+                            ? 'bg-navy/10 text-navy font-bold ring-1 ring-sand/60'
+                            : 'text-navy hover:bg-ivory',
+                        isDisabled && 'opacity-25 pointer-events-none'
+                      )}
+                    >
+                      {day}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Footer: Today + Clear + Close */}
+              <div className="pt-2.5 border-t border-navy/10 flex items-center justify-between text-xs">
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    disabled={isDateDisabled(todayIso)}
+                    onClick={() => selectDate(todayIso)}
+                    className="font-bold text-sand hover:underline disabled:opacity-35"
+                  >
+                    {isHe ? 'היום' : 'Today'}
+                  </button>
+                  {!required && value && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onChange?.('');
+                        setOpen(false);
+                      }}
+                      className="font-semibold text-navy/55 hover:text-red-600"
+                    >
+                      {isHe ? 'ניקוי' : 'Clear'}
+                    </button>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setOpen(false)}
+                  className="inline-flex items-center gap-1 font-semibold text-navy/65 hover:text-navy"
+                >
+                  <X className="w-3.5 h-3.5" />
+                  <span>{isHe ? 'סגור' : 'Close'}</span>
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
     </div>
   );
 };
